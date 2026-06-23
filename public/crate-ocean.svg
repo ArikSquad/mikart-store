@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180" role="img" aria-label="Ocean Crate">
+  <rect width="180" height="180" rx="16" fill="#1d4259"/>
+  <path d="M36 68h108v78H36z" fill="#236c85" stroke="#31c8ef" stroke-width="6"/>
+  <path d="M44 54h92v22H44z" fill="#2c91aa" stroke="#8eeeff" stroke-width="6"/>
+  <path d="M90 54v92M36 93h108" stroke="#b5f7ff" stroke-width="8"/>
+  <path d="M70 34h40l14 23H56z" fill="#31c8ef"/>
+</svg>

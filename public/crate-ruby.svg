@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180" role="img" aria-label="Ruby Crate">
+  <rect width="180" height="180" rx="16" fill="#553146"/>
+  <path d="M36 68h108v78H36z" fill="#7e435d" stroke="#ff4f8b" stroke-width="6"/>
+  <path d="M44 54h92v22H44z" fill="#bd5c82" stroke="#ff8caf" stroke-width="6"/>
+  <path d="M90 54v92M36 93h108" stroke="#ffb3ca" stroke-width="8"/>
+  <path d="M90 30 107 57H73z" fill="#ff4f8b"/>
+</svg>
