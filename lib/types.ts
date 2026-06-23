@@ -2,6 +2,7 @@ export type StoreProduct = {
   id: number;
   name: string;
   price: number;
+  originalPrice?: number;
   currency: string;
   image: string;
   categorySlug: string;

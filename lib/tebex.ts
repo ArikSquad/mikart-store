@@ -51,8 +51,16 @@ async function tebexFetch<T>(path: string, init?: RequestInit, cache: RequestCac
   });
 
   if (!response.ok) {
-    const message = await response.json();
-    throw new TebexError(response.status, `Tebex ${response.status}: ${(message as any).title}`);
+    const message = await response.json().catch(() => ({}));
+    const details = [
+      (message as { title?: unknown }).title,
+      (message as { detail?: unknown }).detail,
+      (message as { message?: unknown }).message,
+      (message as { error?: unknown }).error,
+    ]
+      .filter(Boolean)
+      .join(": ");
+    throw new TebexError(response.status, `Tebex ${response.status}: ${details || "Request failed"}`);
   }
 
   return (await response.json()) as T;
@@ -119,6 +127,14 @@ function valueNumber(value: unknown, fallback = 0) {
   return Number.isFinite(number) ? number : fallback;
 }
 
+function optionalNumber(...values: unknown[]) {
+  for (const value of values) {
+    const number = Number(value);
+    if (Number.isFinite(number) && number > 0) return number;
+  }
+  return undefined;
+}
+
 function firstRecord(...values: unknown[]) {
   return values.find((value): value is Record<string, unknown> => Boolean(value) && typeof value === "object" && !Array.isArray(value));
 }
@@ -155,10 +171,32 @@ function lineUnitPrice(pkg: RawPackage) {
 function normalizePackage(pkg: RawPackage, categorySlug: string): StoreProduct {
   const id = valueNumber(pkg.id ?? pkg.package_id);
   const name = String(pkg.name ?? "Package");
-  const price =
+  const rawPrice =
     valueNumber(pkg.total_price) ||
     valueNumber(pkg.price) ||
     valueNumber((pkg as { base_price?: unknown }).base_price);
+  const saleRecord = firstRecord(pkg.sale, pkg.discount, pkg.discounted);
+  const originalPriceCandidate = optionalNumber(
+    pkg.base_price,
+    pkg.original_price,
+    pkg.regular_price,
+    pkg.price_original,
+    saleRecord?.original_price,
+    saleRecord?.base_price
+  );
+  const explicitOriginalPrice = originalPriceCandidate && originalPriceCandidate > rawPrice ? originalPriceCandidate : undefined;
+  const salePercent =
+    optionalNumber(pkg.salePercent, pkg.sale_percent, pkg.discount_percent, saleRecord?.percent, saleRecord?.percentage) ??
+    (explicitOriginalPrice ? Math.round((1 - rawPrice / explicitOriginalPrice) * 100) : undefined);
+  const discountAmount = optionalNumber(pkg.discount, pkg.discount_amount, saleRecord?.amount);
+  const derivedSalePrice =
+    discountAmount && discountAmount < rawPrice
+      ? Number((rawPrice - discountAmount).toFixed(2))
+      : salePercent && !explicitOriginalPrice
+        ? Number((rawPrice * (1 - salePercent / 100)).toFixed(2))
+        : undefined;
+  const price = derivedSalePrice ?? rawPrice;
+  const originalPrice = explicitOriginalPrice && explicitOriginalPrice > price ? explicitOriginalPrice : derivedSalePrice ? rawPrice : undefined;
   const image = String(pkg.image ?? (pkg as { image_url?: unknown }).image_url ?? "") || "/rank-vip.svg";
   const currency = String(pkg.currency ?? "EUR");
   const rawQuantityLimit = valueNumber((pkg as { limit?: unknown }).limit, 0) || undefined;
@@ -172,6 +210,7 @@ function normalizePackage(pkg: RawPackage, categorySlug: string): StoreProduct {
     id,
     name,
     price,
+    originalPrice: originalPrice && originalPrice > price ? originalPrice : undefined,
     currency,
     image,
     categorySlug,
@@ -180,6 +219,7 @@ function normalizePackage(pkg: RawPackage, categorySlug: string): StoreProduct {
     detailsHtml: parsed.detailsHtml,
     quantityLimit,
     userLimit,
+    salePercent,
     features:
       parsed.features.length > 0
         ? parsed.features
@@ -395,6 +435,60 @@ export async function createBasket(username?: string) {
   return normalizeBasket(result.data);
 }
 
+async function getMinecraftUsernameId(username: string) {
+  const response = await fetch(`https://api.mojang.com/users/profiles/minecraft/${encodeURIComponent(username)}`, {
+    cache: "no-store",
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok) return null;
+  const profile = (await response.json().catch(() => null)) as { id?: unknown } | null;
+  return typeof profile?.id === "string" && profile.id ? profile.id : null;
+}
+
+async function packageAddPayload(productId: number, quantity: number, giftUsername?: string, useUsernameFallback = false) {
+  const payload: Record<string, unknown> = {
+    package_id: String(productId),
+    quantity,
+  };
+
+  if (!giftUsername) return payload;
+
+  const targetUsernameId = useUsernameFallback ? null : await getMinecraftUsernameId(giftUsername);
+  if (targetUsernameId) {
+    payload.target_username_id = targetUsernameId;
+  } else {
+    payload.target_username = giftUsername;
+  }
+
+  return payload;
+}
+
+async function postPackageToBasket(basketIdent: string, productId: number, quantity: number, giftUsername?: string) {
+  const initialPayload = await packageAddPayload(productId, quantity, giftUsername);
+  try {
+    await tebexFetch(
+      `/baskets/${basketIdent}/packages`,
+      {
+        method: "POST",
+        body: JSON.stringify(initialPayload),
+      },
+      "no-store"
+    );
+  } catch (error) {
+    if (!giftUsername || !(error instanceof TebexError) || error.status !== 400 || !("target_username_id" in initialPayload)) {
+      throw error;
+    }
+    await tebexFetch(
+      `/baskets/${basketIdent}/packages`,
+      {
+        method: "POST",
+        body: JSON.stringify(await packageAddPayload(productId, quantity, giftUsername, true)),
+      },
+      "no-store"
+    );
+  }
+}
+
 export async function addPackage(productId: number, quantity: number, username?: string, giftUsername?: string) {
   const cookieStore = await cookies();
   const ident = cookieStore.get("basket_ident")?.value;
@@ -418,34 +512,12 @@ export async function addPackage(productId: number, quantity: number, username?:
   const activeBasket = basket.ident ? basket : await createBasket(username);
 
   try {
-    await tebexFetch(
-      `/baskets/${activeBasket.ident}/packages`,
-      {
-        method: "POST",
-        body: JSON.stringify({
-          package_id: String(productId),
-          quantity,
-          ...(giftUsername ? { target_username: giftUsername } : {}),
-        }),
-      },
-      "no-store"
-    );
+    await postPackageToBasket(activeBasket.ident!, productId, quantity, giftUsername);
     return getBasket(activeBasket.ident);
   } catch (error) {
     if (!isMissingBasket(error)) throw error;
     const freshBasket = await createBasket(username);
-    await tebexFetch(
-      `/baskets/${freshBasket.ident}/packages`,
-      {
-        method: "POST",
-        body: JSON.stringify({
-          package_id: String(productId),
-          quantity,
-          ...(giftUsername ? { target_username: giftUsername } : {}),
-        }),
-      },
-      "no-store"
-    );
+    await postPackageToBasket(freshBasket.ident!, productId, quantity, giftUsername);
     return getBasket(freshBasket.ident);
   }
 }

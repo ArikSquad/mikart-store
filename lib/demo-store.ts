@@ -46,7 +46,8 @@ const products: StoreProduct[] = [
   {
     id: 103,
     name: "TITAN Rank (-20% off)",
-    price: 1.00,
+    price: 16.93,
+    originalPrice: 18.81,
     currency,
     image: "/rank-titan.svg",
     categorySlug: "ranks",

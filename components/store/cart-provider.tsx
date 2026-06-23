@@ -87,7 +87,6 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       setDrawerOpen,
       addItem: async (packageId, quantity = 1, giftUsername) => {
         await run(() => postCart<CartState>("/api/cart/add", { packageId, quantity, username, giftUsername }));
-        setDrawerOpen(true);
       },
       updateQuantity: async (packageId, quantity) => {
         if (cart.demo) {
