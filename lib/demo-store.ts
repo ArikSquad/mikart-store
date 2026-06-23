@@ -52,7 +52,7 @@ const products: StoreProduct[] = [
     categorySlug: "ranks",
     description: "The premium rank with the strongest bundle of commands and cosmetics.",
     descriptionHtml:
-      "<table style=\"width:19%;\"><tbody><tr><td style=\"width:17.0634%;\">yes</td><td style=\"width:82.5799%;\">Click the rank image to see more information<br /></td></tr><tr><td style=\"width:17.0634%;\">yes</td><td style=\"width:82.5799%;\">all from previous rank</td></tr><tr><td style=\"width:17.0634%;\">yes</td><td style=\"width:82.5799%;\">/feed command</td></tr><tr><td style=\"width:17.0634%;\">yes</td><td style=\"width:82.5799%;\">tax evasion</td></tr></tbody></table><p><br /></p><p>Includes:</p>",
+      "<table style=\"width:19%;\"><tbody><tr><td style=\"width:17.0634%;\">yes</td><td style=\"width:82.5799%;\">Click the rank image to see more information<br /></td></tr><tr><td style=\"width:17.0634%;\">yes</td><td style=\"width:82.5799%;\">all from previous rank</td></tr><tr><td style=\"width:17.0634%;\">yes</td><td style=\"width:82.5799%;\">/feed command</td></tr><tr><td style=\"width:17.0634%;\">yes</td><td style=\"width:82.5799%;\">Priority support</td></tr></tbody></table><p><br /></p><p>Includes:</p>",
     detailsHtml: "<p>The premium rank with the strongest bundle of commands and cosmetics.</p><p>Includes:</p>",
     quantityLimit: 1,
     userLimit: 1,
@@ -61,7 +61,7 @@ const products: StoreProduct[] = [
       { text: "Click the rank image to see more information", positive: true },
       { text: "all from previous rank", positive: true },
       { text: "/feed command", positive: true },
-      { text: "tax evasion", positive: true },
+      { text: "Priority support", positive: true },
     ],
   },
   {
@@ -174,7 +174,7 @@ export const demoStorefront: StorefrontData = {
 
 export function createDemoCart(lines: CartState["lines"] = []): CartState {
   const basePrice = lines.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0);
-  const salesTax = Number((basePrice * 0.24).toFixed(2));
+  const salesTax = 0;
 
   return {
     ident: "demo-basket",

@@ -2,7 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Minus, ShoppingBasket, Sparkles, Tag, TicketPercent, Trash2, X } from "lucide-react";
+import { Minus, Plus, ShoppingBasket, Sparkles, Tag, TicketPercent, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useCart } from "@/components/store/cart-provider";
 import { formatMoney } from "@/lib/utils";
@@ -27,10 +27,15 @@ export function CartButton() {
 }
 
 export function CartDrawer() {
-  const { cart, drawerOpen, setDrawerOpen, removeItem, applyDiscount, checkout, pending } = useCart();
+  const { cart, drawerOpen, setDrawerOpen, removeItem, updateQuantity, applyDiscount, checkout, pending } = useCart();
   const [code, setCode] = useState("");
   const [kind, setKind] = useState<"coupon" | "giftcard" | "creator">("coupon");
   const [message, setMessage] = useState("");
+  const codeHelp = {
+    coupon: "Discount codes reduce the basket price when the code is valid.",
+    giftcard: "Gift cards use stored credit from a Tebex gift card number.",
+    creator: "Creator codes support a creator without changing the package you receive.",
+  } as const;
 
   async function submitDiscount(event: FormEvent) {
     event.preventDefault();
@@ -110,6 +115,29 @@ export function CartDrawer() {
                       <p className="text-sm text-[#b9bdca]">
                         {line.quantity} x {formatMoney(line.unitPrice, cart.currency)}
                       </p>
+                      {line.userLimit === 1 ? null : (
+                        <div className="mt-2 inline-flex h-9 items-center rounded-[10px] bg-ink-900">
+                          <button
+                            type="button"
+                            className="grid h-9 w-9 place-items-center text-cyan-pop disabled:opacity-40"
+                            disabled={pending || line.quantity <= 1}
+                            onClick={() => updateQuantity(line.packageId, line.quantity - 1)}
+                            aria-label={`Decrease ${line.name} quantity`}
+                          >
+                            <Minus size={14} />
+                          </button>
+                          <span className="w-10 text-center text-xs font-black">{line.quantity}</span>
+                          <button
+                            type="button"
+                            className="grid h-9 w-9 place-items-center text-cyan-pop disabled:opacity-40"
+                            disabled={pending || line.quantity >= (line.quantityLimit ?? 99)}
+                            onClick={() => updateQuantity(line.packageId, line.quantity + 1)}
+                            aria-label={`Increase ${line.name} quantity`}
+                          >
+                            <Plus size={14} />
+                          </button>
+                        </div>
+                      )}
                     </div>
                     <button
                       type="button"
@@ -145,6 +173,7 @@ export function CartDrawer() {
                       aria-label={`${value} code`}
                     >
                       <TypedIcon size={16} />
+                      <p className="text-xs font-bold uppercase">{(value as string).toLowerCase()}</p>
                     </button>
                   );
                 })}
@@ -167,10 +196,12 @@ export function CartDrawer() {
                 <span>Subtotal</span>
                 <span>{formatMoney(cart.basePrice, cart.currency)}</span>
               </div>
-              <div className="flex justify-between text-[#b9bdca]">
-                <span>Taxes</span>
-                <span>{formatMoney(cart.salesTax, cart.currency)}</span>
-              </div>
+              {cart.salesTax > 0 ? (
+                <div className="flex justify-between text-[#b9bdca]">
+                  <span>Tax</span>
+                  <span>{formatMoney(cart.salesTax, cart.currency)}</span>
+                </div>
+              ) : null}
               <div className="flex justify-between border-t border-[#30364b] pt-3 text-lg font-black">
                 <span>Total</span>
                 <span>{formatMoney(cart.totalPrice, cart.currency)}</span>
@@ -182,7 +213,7 @@ export function CartDrawer() {
               )}
             </div>
 
-            {message && <p className="mt-4 rounded-[12px] bg-[#342334] p-3 text-sm text-orange-pop">{message}</p>}
+            {message && <p className="mt-4 rounded-[12px] bg-[#342334] p-3 text-sm text-orange-pop">{(message)}</p>}
 
             <Button
               className="mt-5 w-full"
@@ -192,9 +223,7 @@ export function CartDrawer() {
               <ShoppingBasket size={16} />
               Checkout
             </Button>
-            <p className="mt-3 flex items-center gap-2 text-xs text-[#858b9d]">
-              <Minus size={13} /> Taxes may be applied at checkout. Sales are final and non-refundable.
-            </p>
+            <p className="mt-3 text-xs text-[#858b9d]">Sales are final and non-refundable.</p>
           </motion.aside>
         </motion.div>
       ) : null}

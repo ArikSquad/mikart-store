@@ -117,3 +117,9 @@ export type CartState = {
   authUrl?: string | null;
   demo: boolean;
 };
+
+export type ServerStatus = {
+  online: boolean;
+  players: number;
+  maxPlayers?: number;
+};

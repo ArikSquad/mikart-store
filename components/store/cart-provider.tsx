@@ -13,7 +13,8 @@ type CartContextValue = {
   pending: boolean;
   drawerOpen: boolean;
   setDrawerOpen: (open: boolean) => void;
-  addItem: (packageId: number, quantity?: number) => Promise<void>;
+  addItem: (packageId: number, quantity?: number, giftUsername?: string) => Promise<void>;
+  updateQuantity: (packageId: number, quantity: number) => Promise<void>;
   removeItem: (packageId: number) => Promise<void>;
   applyDiscount: (kind: DiscountKind, code: string) => Promise<void>;
   checkout: () => Promise<{ checkoutUrl?: string | null; authUrl?: string | null; demo?: boolean }>;
@@ -84,9 +85,22 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       pending: isPending || manualPending,
       drawerOpen,
       setDrawerOpen,
-      addItem: async (packageId, quantity = 1) => {
-        await run(() => postCart<CartState>("/api/cart/add", { packageId, quantity, username }));
+      addItem: async (packageId, quantity = 1, giftUsername) => {
+        await run(() => postCart<CartState>("/api/cart/add", { packageId, quantity, username, giftUsername }));
         setDrawerOpen(true);
+      },
+      updateQuantity: async (packageId, quantity) => {
+        if (cart.demo) {
+          const nextLines = cart.lines.map((line) =>
+            line.packageId === packageId
+              ? { ...line, quantity: Math.max(1, Math.min(quantity, line.quantityLimit ?? 99)) }
+              : line
+          );
+          const basePrice = Number(nextLines.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0).toFixed(2));
+          startTransition(() => setCart({ ...cart, lines: nextLines, basePrice, salesTax: 0, totalPrice: basePrice }));
+          return;
+        }
+        await run(() => postCart<CartState>("/api/cart/update", { packageId, quantity }));
       },
       removeItem: async (packageId) => {
         await run(() => postCart<CartState>("/api/cart/remove", { packageId }));

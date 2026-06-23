@@ -8,6 +8,7 @@ export async function POST(request: NextRequest) {
   const quantity = Math.max(1, Number(body.quantity ?? 1));
   const cookieStore = await cookies();
   const username = String(body.username ?? cookieStore.get("minecraft_username")?.value ?? "").trim();
+  const giftUsername = String(body.giftUsername ?? "").trim();
 
   if (!Number.isFinite(packageId)) {
     return NextResponse.json({ error: "packageId is required" }, { status: 400 });
@@ -18,7 +19,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const cart = await addPackage(packageId, quantity, username);
+    const cart = await addPackage(packageId, quantity, username, giftUsername || undefined);
     const response = NextResponse.json(cart);
     if (cart.ident) {
       response.cookies.set("basket_ident", cart.ident, {

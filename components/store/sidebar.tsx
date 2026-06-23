@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import {
   BadgeDollarSign,
   Box,
@@ -13,7 +16,7 @@ import {
   Users,
 } from "lucide-react";
 import { RichHtml } from "@/components/store/rich-html";
-import type { SidebarData, SidebarModule, StoreCategory } from "@/lib/types";
+import type { ServerStatus, SidebarData, SidebarModule, StoreCategory } from "@/lib/types";
 import { cn, formatMoney } from "@/lib/utils";
 
 const icons = {
@@ -33,7 +36,7 @@ export function Sidebar({
   activeSlug: string;
 }) {
   return (
-    <aside className="hidden w-[392px] shrink-0 rounded-none bg-ink-900 px-6 py-8 lg:sticky lg:top-0 lg:block lg:h-screen lg:overflow-y-auto lg:rounded-[18px] xl:px-8">
+    <aside className="hidden h-fit w-[392px] shrink-0 rounded-none bg-ink-900 px-6 py-8 lg:block lg:rounded-[18px] xl:px-8">
       <ServerButton />
       <Link href="/" className="mx-auto mt-8 block h-[250px] w-[250px]" aria-label="MikArt home">
         <img src="/logo.png" alt="MikArt" className="h-full w-full object-cover rounded-md" />
@@ -206,6 +209,27 @@ function GoalModule({ module }: { module: Extract<SidebarModule, { type: "paymen
 }
 
 function ServerButton() {
+  const [status, setStatus] = useState<ServerStatus>({ online: false, players: 0 });
+
+  useEffect(() => {
+    let active = true;
+    async function loadStatus() {
+      try {
+        const response = await fetch("/api/server-status", { cache: "no-store" });
+        const nextStatus = (await response.json()) as ServerStatus;
+        if (active) setStatus(nextStatus);
+      } catch {
+        if (active) setStatus({ online: false, players: 0 });
+      }
+    }
+    loadStatus();
+    const interval = window.setInterval(loadStatus, 30000);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, []);
+
   return (
     <a
       href="minecraft://?addExternalServer=MikArt|play.mikart.eu:25565"
@@ -216,7 +240,7 @@ function ServerButton() {
         Play Now
       </span>
       <span className="mt-1 rounded-[8px] bg-[#493020] px-3 py-0.5 text-[11px] font-black uppercase">
-        5 Online
+        {status.online ? `${status.players} Online` : "Checking..."}
       </span>
     </a>
   );

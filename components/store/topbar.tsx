@@ -1,21 +1,25 @@
 "use client";
 
 import Link from "next/link";
-import { LogIn, LogOut, Menu, PlayCircle } from "lucide-react";
+import { LogIn, LogOut, Menu, PlayCircle, X } from "lucide-react";
 import { CartButton } from "@/components/store/cart-drawer";
 import type { StoreCategory } from "@/lib/types";
 import { FormEvent, useState } from "react";
 import { useCart } from "@/components/store/cart-provider";
 import { Button } from "@/components/ui/button";
+import * as Dialog from "@/components/ui/dialog";
 
 export function Topbar({ categories }: { categories: StoreCategory[] }) {
   const [open, setOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
   const [draftUsername, setDraftUsername] = useState("");
   const { username, setUsername } = useCart();
 
   function connectAccount(event: FormEvent) {
     event.preventDefault();
-    if (draftUsername.trim()) setUsername(draftUsername);
+    if (!draftUsername.trim()) return;
+    setUsername(draftUsername);
+    setAccountOpen(false);
   }
 
   return (
@@ -51,10 +55,14 @@ export function Topbar({ categories }: { categories: StoreCategory[] }) {
             </button>
           </div>
         ) : (
-          <div className="hidden min-w-0 items-center gap-3 rounded-[16px] border-2 border-[#555b71] px-4 py-3 text-[#c7cad6] sm:flex">
+          <button
+            type="button"
+            onClick={() => setAccountOpen(true)}
+            className="flex min-w-0 items-center gap-3 rounded-[16px] border-2 border-[#555b71] px-3 py-3 text-[#c7cad6] transition hover:border-cyan-pop hover:text-white sm:px-4"
+          >
             <LogIn size={18} className="text-cyan-pop" />
-            <span className="text-sm font-black">Connect account</span>
-          </div>
+            <span className="hidden text-sm font-black sm:inline">Connect account</span>
+          </button>
         )}
 
         <div className="ml-auto">
@@ -84,26 +92,41 @@ export function Topbar({ categories }: { categories: StoreCategory[] }) {
         </nav>
       )}
 
-      {!username && (
-        <form onSubmit={connectAccount} className="mt-6 rounded-[14px] bg-ink-850 p-4 md:p-6">
-          <h2 className="text-3xl font-black">Sign In</h2>
-          <div className="mt-3 flex flex-col gap-3 sm:flex-row">
-            <input
-              value={draftUsername}
-              onChange={(event) => setDraftUsername(event.target.value)}
-              placeholder="Enter your in-game username"
-              className="min-h-12 min-w-0 flex-1 rounded-[12px] border border-transparent bg-ink-800 px-4 font-black text-white outline-none ring-[#42e95d]/0 transition placeholder:text-[#9da3b4] focus:ring-2"
-            />
-            <Button
-              variant="primary"
-              className="border-[#42e95d] bg-[#153f2b] text-[#42e95d] hover:bg-[#194a32]"
-              disabled={!draftUsername.trim()}
-            >
-              Continue
-            </Button>
-          </div>
-        </form>
-      )}
+      <Dialog.Root open={accountOpen} onOpenChange={setAccountOpen}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm" />
+          <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[calc(100vw-32px)] max-w-[520px] -translate-x-1/2 -translate-y-1/2 rounded-[14px] bg-ink-900 p-5 shadow-2xl md:p-6">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <Dialog.Title className="text-2xl font-black">Connect account</Dialog.Title>
+                <Dialog.Description className="mt-2 text-sm text-[#b9bdca]">
+                  Enter the Minecraft username that should receive purchases by default.
+                </Dialog.Description>
+              </div>
+              <Dialog.Close asChild>
+                <Button variant="ghost" size="icon" aria-label="Close account modal">
+                  <X size={20} />
+                </Button>
+              </Dialog.Close>
+            </div>
+            <form onSubmit={connectAccount} className="mt-5 rounded-[14px] bg-ink-850 p-4">
+              <input
+                value={draftUsername}
+                onChange={(event) => setDraftUsername(event.target.value)}
+                placeholder="Enter username"
+                className="min-h-12 w-full rounded-[12px] border border-transparent bg-ink-800 px-4 font-black text-white outline-none ring-[#42e95d]/0 transition placeholder:text-[#9da3b4] focus:ring-2"
+              />
+              <Button
+                variant="primary"
+                className="mt-3 w-full border-[#42e95d] bg-[#153f2b] text-[#42e95d] hover:bg-[#194a32]"
+                disabled={!draftUsername.trim()}
+              >
+                Continue
+              </Button>
+            </form>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
     </header>
   );
 }

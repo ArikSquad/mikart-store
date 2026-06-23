@@ -2,7 +2,7 @@ import { cacheLife } from "next/cache";
 import { cookies, headers } from "next/headers";
 import sanitizeHtml from "sanitize-html";
 import { demoStorefront, createDemoCart, findDemoProduct } from "@/lib/demo-store";
-import type { CartLine, CartState, SidebarData, SidebarModule, StoreCategory, StorefrontData, StoreProduct } from "@/lib/types";
+import type { CartLine, CartState, ServerStatus, SidebarData, SidebarModule, StoreCategory, StorefrontData, StoreProduct } from "@/lib/types";
 import { slugify } from "@/lib/utils";
 
 const API_BASE = "https://headless.tebex.io/api";
@@ -51,8 +51,8 @@ async function tebexFetch<T>(path: string, init?: RequestInit, cache: RequestCac
   });
 
   if (!response.ok) {
-    const message = await response.text();
-    throw new TebexError(response.status, `Tebex ${response.status}: ${message}`);
+    const message = await response.json();
+    throw new TebexError(response.status, `Tebex ${response.status}: ${(message as any).title}`);
   }
 
   return (await response.json()) as T;
@@ -117,6 +117,39 @@ function minecraftBody(usernameOrId?: string, size = 96) {
 function valueNumber(value: unknown, fallback = 0) {
   const number = Number(value);
   return Number.isFinite(number) ? number : fallback;
+}
+
+function firstRecord(...values: unknown[]) {
+  return values.find((value): value is Record<string, unknown> => Boolean(value) && typeof value === "object" && !Array.isArray(value));
+}
+
+function linePackageId(pkg: RawPackage) {
+  const packageRecord = firstRecord(pkg.package, pkg.package_data, pkg.packageData);
+  return valueNumber(
+    pkg.id ??
+      pkg.package_id ??
+      pkg.packageId ??
+      pkg.in_basket_package_id ??
+      packageRecord?.id ??
+      packageRecord?.package_id
+  );
+}
+
+function lineUnitPrice(pkg: RawPackage) {
+  const packageRecord = firstRecord(pkg.package, pkg.package_data, pkg.packageData);
+  const basketRecord = firstRecord(pkg.in_basket, pkg.inBasket);
+  const quantity = Math.max(1, valueNumber(pkg.qty ?? pkg.quantity, 1));
+  const total = valueNumber(pkg.total_price ?? pkg.price_total ?? pkg.total, 0);
+  if (total > 0 && quantity > 1) return Number((total / quantity).toFixed(2));
+  return valueNumber(
+    pkg.price ??
+      pkg.base_price ??
+      pkg.unit_price ??
+      basketRecord?.price ??
+      packageRecord?.price ??
+      packageRecord?.base_price ??
+      pkg.total_price
+  );
 }
 
 function normalizePackage(pkg: RawPackage, categorySlug: string): StoreProduct {
@@ -331,7 +364,7 @@ export async function getBasket(ident?: string | null): Promise<CartState> {
       undefined,
       "no-store"
     );
-    return normalizeBasket(result.data);
+    return enrichCartPrices(normalizeBasket(result.data));
   } catch (error) {
     if (isMissingBasket(error)) return createDemoCart();
     throw error;
@@ -362,7 +395,7 @@ export async function createBasket(username?: string) {
   return normalizeBasket(result.data);
 }
 
-export async function addPackage(productId: number, quantity: number, username?: string) {
+export async function addPackage(productId: number, quantity: number, username?: string, giftUsername?: string) {
   const cookieStore = await cookies();
   const ident = cookieStore.get("basket_ident")?.value;
 
@@ -389,7 +422,11 @@ export async function addPackage(productId: number, quantity: number, username?:
       `/baskets/${activeBasket.ident}/packages`,
       {
         method: "POST",
-        body: JSON.stringify({ package_id: String(productId), quantity }),
+        body: JSON.stringify({
+          package_id: String(productId),
+          quantity,
+          ...(giftUsername ? { target_username: giftUsername } : {}),
+        }),
       },
       "no-store"
     );
@@ -401,12 +438,28 @@ export async function addPackage(productId: number, quantity: number, username?:
       `/baskets/${freshBasket.ident}/packages`,
       {
         method: "POST",
-        body: JSON.stringify({ package_id: String(productId), quantity }),
+        body: JSON.stringify({
+          package_id: String(productId),
+          quantity,
+          ...(giftUsername ? { target_username: giftUsername } : {}),
+        }),
       },
       "no-store"
     );
     return getBasket(freshBasket.ident);
   }
+}
+
+export async function updatePackageQuantity(productId: number, quantity: number) {
+  const cookieStore = await cookies();
+  const ident = cookieStore.get("basket_ident")?.value;
+  if (!isConfigured() || !ident) return createDemoCart();
+
+  await tebexFetch(`/baskets/${ident}/packages/${productId}`, {
+    method: "PUT",
+    body: JSON.stringify({ quantity }),
+  }, "no-store");
+  return getBasket(ident);
 }
 
 export async function removePackage(productId: number) {
@@ -461,13 +514,24 @@ export async function getBasketAuth(ident: string) {
 }
 
 export function normalizeBasket(basket: RawBasket): CartState {
-  const lines = (basket.packages ?? []).map((pkg) => ({
-    packageId: valueNumber(pkg.id ?? pkg.package_id),
-    name: String(pkg.name ?? "Package"),
-    quantity: valueNumber(pkg.qty ?? pkg.quantity, 1),
-    unitPrice: valueNumber(pkg.price ?? pkg.base_price ?? pkg.total_price),
-    image: String(pkg.image ?? "/rank-vip.svg"),
-  }));
+  const lines = (basket.packages ?? []).map((pkg) => {
+    const packageRecord = firstRecord(pkg.package, pkg.package_data, pkg.packageData);
+    const basketRecord = firstRecord(pkg.in_basket, pkg.inBasket);
+    return {
+      packageId: linePackageId(pkg),
+      name: String(pkg.name ?? packageRecord?.name ?? "Package"),
+      quantity: Math.max(1, valueNumber(pkg.qty ?? pkg.quantity ?? basketRecord?.quantity, 1)),
+      unitPrice: lineUnitPrice(pkg),
+      image: String(pkg.image ?? packageRecord?.image ?? packageRecord?.image_url ?? "/rank-vip.svg"),
+      quantityLimit: valueNumber(pkg.limit ?? packageRecord?.limit, 0) || undefined,
+      userLimit: valueNumber(pkg.user_limit ?? packageRecord?.user_limit, 0) || undefined,
+    };
+  });
+
+  const computedBasePrice = Number(lines.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0).toFixed(2));
+  const basePrice = valueNumber(basket.base_price, computedBasePrice) || computedBasePrice;
+  const salesTax = valueNumber(basket.sales_tax ?? basket.tax, 0);
+  const totalPrice = valueNumber(basket.total_price, Number((basePrice + salesTax).toFixed(2))) || Number((basePrice + salesTax).toFixed(2));
 
   return {
     ident: basket.ident ?? null,
@@ -475,11 +539,65 @@ export function normalizeBasket(basket: RawBasket): CartState {
     coupons: (basket.coupons ?? []).map((coupon) => coupon.coupon_code ?? "").filter(Boolean),
     giftcards: (basket.giftcards ?? []).map((giftcard) => giftcard.card_number ?? "").filter(Boolean),
     creatorCode: String(basket.creator_code ?? "") || null,
-    basePrice: valueNumber(basket.base_price),
-    salesTax: valueNumber(basket.sales_tax),
-    totalPrice: valueNumber(basket.total_price),
+    basePrice,
+    salesTax,
+    totalPrice,
     currency: String(basket.currency ?? "EUR"),
     checkoutUrl: basket.links?.checkout ?? null,
     demo: false,
   };
+}
+
+async function enrichCartPrices(cart: CartState): Promise<CartState> {
+  if (cart.lines.length === 0) return cart;
+  try {
+    const storefront = await getStorefront();
+    const products = new Map(
+      storefront.categories.flatMap((category) => category.products).map((product) => [product.id, product])
+    );
+    const lines = cart.lines.map((line) => {
+      const product = products.get(line.packageId);
+      return product
+        ? {
+            ...line,
+            name: product.name,
+            unitPrice: product.price,
+            image: product.image,
+            quantityLimit: product.quantityLimit,
+            userLimit: product.userLimit,
+          }
+        : line;
+    });
+    const basePrice = Number(lines.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0).toFixed(2));
+    const hasValueCode = cart.coupons.length > 0 || cart.giftcards.length > 0;
+    return {
+      ...cart,
+      lines,
+      basePrice,
+      totalPrice: hasValueCode ? cart.totalPrice : Number((basePrice + cart.salesTax).toFixed(2)),
+    };
+  } catch {
+    return cart;
+  }
+}
+
+export async function getMinecraftServerStatus(hostname = "play.mikart.eu"): Promise<ServerStatus> {
+  try {
+    const response = await fetch(`https://api.mcstatus.io/v2/status/java/${encodeURIComponent(hostname)}`, {
+      cache: "no-store",
+      headers: { Accept: "application/json" },
+    });
+    if (!response.ok) throw new Error("Server status request failed");
+    const data = (await response.json()) as {
+      online?: boolean;
+      players?: { online?: number; max?: number };
+    };
+    return {
+      online: Boolean(data.online),
+      players: valueNumber(data.players?.online, 0),
+      maxPlayers: valueNumber(data.players?.max, 0) || undefined,
+    };
+  } catch {
+    return { online: false, players: 0 };
+  }
 }
