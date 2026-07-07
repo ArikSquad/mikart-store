@@ -116,7 +116,6 @@ export type CartState = {
   currency: string;
   checkoutUrl?: string | null;
   authUrl?: string | null;
-  demo: boolean;
 };
 
 export type ServerStatus = {

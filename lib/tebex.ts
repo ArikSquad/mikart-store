@@ -1,8 +1,8 @@
 import { cacheLife } from "next/cache";
 import { cookies, headers } from "next/headers";
 import sanitizeHtml from "sanitize-html";
-import { demoStorefront, createDemoCart, findDemoProduct } from "@/lib/demo-store";
-import type { CartLine, CartState, ServerStatus, SidebarData, SidebarModule, StoreCategory, StorefrontData, StoreProduct } from "@/lib/types";
+import { createEmptyCart } from "@/lib/cart";
+import type { CartState, ServerStatus, SidebarData, SidebarModule, StoreCategory, StorefrontData, StoreProduct } from "@/lib/types";
 import { slugify } from "@/lib/utils";
 
 const API_BASE = "https://headless.tebex.io/api";
@@ -35,6 +35,10 @@ class TebexError extends Error {
 
 function isConfigured() {
   return Boolean(token);
+}
+
+function assertConfigured() {
+  if (!isConfigured()) throw new Error("TEBEX_PUBLIC_TOKEN is not configured");
 }
 
 async function tebexFetch<T>(path: string, init?: RequestInit, cache: RequestCache = "force-cache") {
@@ -246,57 +250,60 @@ export async function getStorefront(): Promise<StorefrontData> {
   "use cache";
   cacheLife("minutes");
 
-  if (!isConfigured()) return demoStorefront;
+  assertConfigured();
 
-  try {
-    const [result, sidebar] = await Promise.all([
-      tebexFetch<TebexEnvelope<RawCategory[]>>(`/accounts/${token}/categories?includePackages=1`),
-      getSidebarData(),
-    ]);
-    const categories = result.data.map(normalizeCategory);
-    return {
-      categories: [
-        demoStorefront.categories[0],
-        ...categories
-      ],
-      sidebar,
-      currency: categories[0]?.products[0]?.currency ?? "EUR",
-    };
-  } catch {
-    return demoStorefront;
-  }
+  const [result, sidebar] = await Promise.all([
+    tebexFetch<TebexEnvelope<RawCategory[]>>(`/accounts/${token}/categories?includePackages=1`),
+    getSidebarData(),
+  ]);
+  const categories = result.data.map(normalizeCategory);
+  return {
+    categories: [
+      {
+        id: 0,
+        name: "Home",
+        slug: "home",
+        description: "Store home",
+        icon: "home",
+        products: [],
+      },
+      ...categories,
+    ],
+    sidebar,
+    currency: categories[0]?.products[0]?.currency ?? "EUR",
+  };
 }
 
 async function getSidebarData(): Promise<SidebarData> {
-  if (!isConfigured()) return demoStorefront.sidebar;
+  assertConfigured();
 
-  try {
-    const result = await tebexFetch<TebexEnvelope<RawSidebarModule[]>>(`/accounts/${token}/sidebar`);
-    const modules = result.data.map(normalizeSidebarModule).filter((module): module is SidebarModule => Boolean(module));
-    const topCustomer = modules.find((module) => module.type === "top_customer");
-    const recentPayments = modules.find((module) => module.type === "recent_payments");
+  const result = await tebexFetch<TebexEnvelope<RawSidebarModule[]>>(`/accounts/${token}/sidebar`);
+  const modules = result.data.map(normalizeSidebarModule).filter((module): module is SidebarModule => Boolean(module));
+  const topCustomer = modules.find((module) => module.type === "top_customer");
+  const recentPayments = modules.find((module) => module.type === "recent_payments");
 
-    return {
-      modules: modules.length > 0 ? modules : demoStorefront.sidebar.modules,
-      topCustomer:
-        topCustomer?.type === "top_customer"
-          ? {
-              name: topCustomer.username,
-              caption: topCustomer.total ? `Paid ${topCustomer.total} this year.` : "Paid the most this year.",
-              avatar: minecraftBody(topCustomer.usernameId ?? topCustomer.username, 96),
-            }
-          : demoStorefront.sidebar.topCustomer,
-      recentPayments:
-        recentPayments?.type === "recent_payments"
-          ? recentPayments.payments.map((payment) => ({
-              name: payment.username,
-              avatar: minecraftAvatar(payment.usernameId ?? payment.username, 48),
-            }))
-          : demoStorefront.sidebar.recentPayments,
-    };
-  } catch {
-    return demoStorefront.sidebar;
-  }
+  return {
+    modules,
+    topCustomer:
+      topCustomer?.type === "top_customer"
+        ? {
+            name: topCustomer.username,
+            caption: topCustomer.total ? `Paid ${topCustomer.total} this year.` : "Paid the most this year.",
+            avatar: minecraftBody(topCustomer.usernameId ?? topCustomer.username, 96),
+          }
+        : {
+            name: "",
+            caption: "",
+            avatar: "",
+          },
+    recentPayments:
+      recentPayments?.type === "recent_payments"
+        ? recentPayments.payments.map((payment) => ({
+            name: payment.username,
+            avatar: minecraftAvatar(payment.usernameId ?? payment.username, 48),
+          }))
+        : [],
+  };
 }
 
 function normalizeSidebarModule(module: RawSidebarModule): SidebarModule | null {
@@ -396,7 +403,8 @@ function normalizeSidebarModule(module: RawSidebarModule): SidebarModule | null 
 }
 
 export async function getBasket(ident?: string | null): Promise<CartState> {
-  if (!isConfigured() || !ident || ident === "demo-basket") return createDemoCart();
+  assertConfigured();
+  if (!ident) return createEmptyCart();
 
   try {
     const result = await tebexFetch<TebexEnvelope<RawBasket>>(
@@ -406,13 +414,13 @@ export async function getBasket(ident?: string | null): Promise<CartState> {
     );
     return enrichCartPrices(normalizeBasket(result.data));
   } catch (error) {
-    if (isMissingBasket(error)) return createDemoCart();
+    if (isMissingBasket(error)) return createEmptyCart();
     throw error;
   }
 }
 
 export async function createBasket(username?: string) {
-  if (!isConfigured()) return createDemoCart();
+  assertConfigured();
 
   const requestHeaders = await headers();
   const host = requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host") ?? "localhost:3000";
@@ -493,20 +501,7 @@ export async function addPackage(productId: number, quantity: number, username?:
   const cookieStore = await cookies();
   const ident = cookieStore.get("basket_ident")?.value;
 
-  if (!isConfigured()) {
-    const product = findDemoProduct(productId);
-    if (!product) return createDemoCart();
-    const line: CartLine = {
-      packageId: product.id,
-      name: product.name,
-      quantity: product.userLimit === 1 ? 1 : Math.min(quantity, product.quantityLimit ?? 99),
-      unitPrice: product.price,
-      image: product.image,
-      quantityLimit: product.quantityLimit,
-      userLimit: product.userLimit,
-    };
-    return createDemoCart([line]);
-  }
+  assertConfigured();
 
   const basket = ident ? await getBasket(ident) : await createBasket(username);
   const activeBasket = basket.ident ? basket : await createBasket(username);
@@ -525,7 +520,8 @@ export async function addPackage(productId: number, quantity: number, username?:
 export async function updatePackageQuantity(productId: number, quantity: number) {
   const cookieStore = await cookies();
   const ident = cookieStore.get("basket_ident")?.value;
-  if (!isConfigured() || !ident) return createDemoCart();
+  assertConfigured();
+  if (!ident) return createEmptyCart();
 
   await tebexFetch(`/baskets/${ident}/packages/${productId}`, {
     method: "PUT",
@@ -537,7 +533,8 @@ export async function updatePackageQuantity(productId: number, quantity: number)
 export async function removePackage(productId: number) {
   const cookieStore = await cookies();
   const ident = cookieStore.get("basket_ident")?.value;
-  if (!isConfigured() || !ident) return createDemoCart();
+  assertConfigured();
+  if (!ident) return createEmptyCart();
 
   await tebexFetch(`/baskets/${ident}/packages/remove`, {
     method: "POST",
@@ -549,13 +546,8 @@ export async function removePackage(productId: number) {
 export async function applyDiscount(kind: "coupon" | "giftcard" | "creator", code: string) {
   const cookieStore = await cookies();
   const ident = cookieStore.get("basket_ident")?.value;
-  if (!isConfigured() || !ident) {
-    const cart = createDemoCart();
-    if (kind === "creator") cart.creatorCode = code;
-    if (kind === "coupon") cart.coupons = [code];
-    if (kind === "giftcard") cart.giftcards = [code];
-    return cart;
-  }
+  assertConfigured();
+  if (!ident) return createEmptyCart();
 
   const endpoints = {
     coupon: "coupons",
@@ -572,7 +564,7 @@ export async function applyDiscount(kind: "coupon" | "giftcard" | "creator", cod
 }
 
 export async function getBasketAuth(ident: string) {
-  if (!isConfigured()) return null;
+  assertConfigured();
   const requestHeaders = await headers();
   const host = requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host") ?? "localhost:3000";
   const proto = requestHeaders.get("x-forwarded-proto") ?? "http";
@@ -616,7 +608,6 @@ export function normalizeBasket(basket: RawBasket): CartState {
     totalPrice,
     currency: String(basket.currency ?? "EUR"),
     checkoutUrl: basket.links?.checkout ?? null,
-    demo: false,
   };
 }
 

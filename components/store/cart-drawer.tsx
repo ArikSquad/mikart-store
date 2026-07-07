@@ -53,10 +53,6 @@ export function CartDrawer() {
     setMessage("");
     try {
       const result = await checkout();
-      if (result.demo) {
-        setMessage("Demo mode: add TEBEX_PUBLIC_TOKEN to enable live checkout.");
-        return;
-      }
       if (result.authUrl) {
         window.location.href = result.authUrl;
         return;

@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, useTransition } from "react";
 import type { CartState } from "@/lib/types";
-import { createDemoCart } from "@/lib/demo-store";
+import { createEmptyCart } from "@/lib/cart";
 
 type DiscountKind = "coupon" | "giftcard" | "creator";
 
@@ -17,7 +17,7 @@ type CartContextValue = {
   updateQuantity: (packageId: number, quantity: number) => Promise<void>;
   removeItem: (packageId: number) => Promise<void>;
   applyDiscount: (kind: DiscountKind, code: string) => Promise<void>;
-  checkout: () => Promise<{ checkoutUrl?: string | null; authUrl?: string | null; demo?: boolean }>;
+  checkout: () => Promise<{ checkoutUrl?: string | null; authUrl?: string | null }>;
 };
 
 const CartContext = createContext<CartContextValue | null>(null);
@@ -40,7 +40,7 @@ async function postCart<T>(url: string, body?: unknown): Promise<T> {
 }
 
 export function CartProvider({ children }: { children: React.ReactNode }) {
-  const [cart, setCart] = useState<CartState>(() => createDemoCart());
+  const [cart, setCart] = useState<CartState>(() => createEmptyCart());
   const [username, setUsernameState] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -89,16 +89,6 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         await run(() => postCart<CartState>("/api/cart/add", { packageId, quantity, username, giftUsername }));
       },
       updateQuantity: async (packageId, quantity) => {
-        if (cart.demo) {
-          const nextLines = cart.lines.map((line) =>
-            line.packageId === packageId
-              ? { ...line, quantity: Math.max(1, Math.min(quantity, line.quantityLimit ?? 99)) }
-              : line
-          );
-          const basePrice = Number(nextLines.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0).toFixed(2));
-          startTransition(() => setCart({ ...cart, lines: nextLines, basePrice, salesTax: 0, totalPrice: basePrice }));
-          return;
-        }
         await run(() => postCart<CartState>("/api/cart/update", { packageId, quantity }));
       },
       removeItem: async (packageId) => {
