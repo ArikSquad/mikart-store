@@ -3,6 +3,7 @@ export type StoreProduct = {
   name: string;
   price: number;
   originalPrice?: number;
+  totalPrice?: number;
   currency: string;
   image: string;
   categorySlug: string;

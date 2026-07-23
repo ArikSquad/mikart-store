@@ -198,12 +198,12 @@ export function CartDrawer() {
               </div>
               {cart.salesTax > 0 ? (
                 <div className="flex justify-between text-[#b9bdca]">
-                  <span>Tax</span>
+                  <span>Sales tax / VAT</span>
                   <span>{formatMoney(cart.salesTax, cart.currency)}</span>
                 </div>
               ) : null}
               <div className="flex justify-between border-t border-[#30364b] pt-3 text-lg font-black">
-                <span>Total</span>
+                <span>Total incl. tax / VAT</span>
                 <span>{formatMoney(cart.totalPrice, cart.currency)}</span>
               </div>
               {(cart.coupons.length > 0 || cart.giftcards.length > 0 || cart.creatorCode) && (

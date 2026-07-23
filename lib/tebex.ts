@@ -171,32 +171,38 @@ function lineUnitPrice(pkg: RawPackage) {
 function normalizePackage(pkg: RawPackage, categorySlug: string): StoreProduct {
   const id = valueNumber(pkg.id ?? pkg.package_id);
   const name = String(pkg.name ?? "Package");
-  const rawPrice =
-    valueNumber(pkg.total_price) ||
-    valueNumber(pkg.price) ||
-    valueNumber((pkg as { base_price?: unknown }).base_price);
   const saleRecord = firstRecord(pkg.sale, pkg.discount, pkg.discounted);
+  const totalPrice = optionalNumber(pkg.total_price, pkg.price_including_tax, pkg.price_with_tax);
+  const listedPrice =
+    valueNumber(pkg.base_price) ||
+    valueNumber(pkg.price) ||
+    valueNumber(pkg.unit_price) ||
+    valueNumber(pkg.total_price);
   const originalPriceCandidate = optionalNumber(
-    pkg.base_price,
     pkg.original_price,
     pkg.regular_price,
     pkg.price_original,
     saleRecord?.original_price,
     saleRecord?.base_price
   );
-  const explicitOriginalPrice = originalPriceCandidate && originalPriceCandidate > rawPrice ? originalPriceCandidate : undefined;
-  const salePercent =
-    optionalNumber(pkg.salePercent, pkg.sale_percent, pkg.discount_percent, saleRecord?.percent, saleRecord?.percentage) ??
-    (explicitOriginalPrice ? Math.round((1 - rawPrice / explicitOriginalPrice) * 100) : undefined);
-  const discountAmount = optionalNumber(pkg.discount, pkg.discount_amount, saleRecord?.amount);
-  const derivedSalePrice =
-    discountAmount && discountAmount < rawPrice
-      ? Number((rawPrice - discountAmount).toFixed(2))
-      : salePercent && !explicitOriginalPrice
-        ? Number((rawPrice * (1 - salePercent / 100)).toFixed(2))
-        : undefined;
-  const price = derivedSalePrice ?? rawPrice;
-  const originalPrice = explicitOriginalPrice && explicitOriginalPrice > price ? explicitOriginalPrice : derivedSalePrice ? rawPrice : undefined;
+  const salePercent = optionalNumber(
+    pkg.salePercent,
+    pkg.sale_percent,
+    pkg.discount_percent,
+    saleRecord?.percent,
+    saleRecord?.percentage
+  );
+  const discountAmount = optionalNumber(pkg.discount_amount, saleRecord?.amount);
+  const derivedOriginalPrice =
+    originalPriceCandidate && originalPriceCandidate > listedPrice
+      ? originalPriceCandidate
+      : salePercent && salePercent < 100
+        ? Number((listedPrice / (1 - salePercent / 100)).toFixed(2))
+        : discountAmount
+          ? Number((listedPrice + discountAmount).toFixed(2))
+          : undefined;
+  const price = listedPrice;
+  const originalPrice = derivedOriginalPrice && derivedOriginalPrice > price ? derivedOriginalPrice : undefined;
   const image = String(pkg.image ?? (pkg as { image_url?: unknown }).image_url ?? "") || "/rank-vip.svg";
   const currency = String(pkg.currency ?? "EUR");
   const rawQuantityLimit = valueNumber((pkg as { limit?: unknown }).limit, 0) || undefined;
@@ -211,6 +217,7 @@ function normalizePackage(pkg: RawPackage, categorySlug: string): StoreProduct {
     name,
     price,
     originalPrice: originalPrice && originalPrice > price ? originalPrice : undefined,
+    totalPrice: totalPrice && totalPrice !== price ? totalPrice : undefined,
     currency,
     image,
     categorySlug,
@@ -219,7 +226,7 @@ function normalizePackage(pkg: RawPackage, categorySlug: string): StoreProduct {
     detailsHtml: parsed.detailsHtml,
     quantityLimit,
     userLimit,
-    salePercent,
+    salePercent: salePercent ?? (originalPrice ? Math.round((1 - price / originalPrice) * 100) : undefined),
     features:
       parsed.features.length > 0
         ? parsed.features
