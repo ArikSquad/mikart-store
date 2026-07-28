@@ -6,11 +6,12 @@ import { Check, Gift, Info, Minus, Plus, Tag, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useCart } from "@/components/store/cart-provider";
 import { RichHtml } from "@/components/store/rich-html";
-import type { StoreProduct } from "@/lib/types";
+import type { Package } from "@/lib/types";
+import { getPackageDetails } from "@/lib/package-details";
 import { formatMoney } from "@/lib/utils";
 import * as Dialog from "@/components/ui/dialog";
 
-export function ProductGrid({ products }: { products: StoreProduct[] }) {
+export function ProductGrid({ products }: { products: Package[] }) {
   return (
     <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
       {products.map((product, index) => (
@@ -20,17 +21,19 @@ export function ProductGrid({ products }: { products: StoreProduct[] }) {
   );
 }
 
-function ProductCard({ product, index }: { product: StoreProduct; index: number }) {
+function ProductCard({ product, index }: { product: Package; index: number }) {
   const { addItem, cart, pending, removeItem, updateQuantity } = useCart();
-  const existing = cart.lines.find((line) => line.packageId === product.id);
-  const maxQuantity = product.userLimit === 1 ? 1 : product.quantityLimit ?? 64;
+  const existing = cart.packages.find((line) => line.id === product.id);
+  const userLimit = typeof product.user_limit === "number" ? product.user_limit : product.user_limit?.limit;
+  const maxQuantity = userLimit === 1 || product.disable_quantity ? 1 : 64;
   const canManageQuantity = maxQuantity > 1;
-  const limitReached = product.userLimit === 1 && Boolean(existing);
+  const limitReached = userLimit === 1 && Boolean(existing);
+  const details = useMemo(() => getPackageDetails(product.description), [product.description]);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [giftOpen, setGiftOpen] = useState(false);
   const [giftUsername, setGiftUsername] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const existingQuantity = useMemo(() => Math.min(existing?.quantity ?? 1, maxQuantity), [existing?.quantity, maxQuantity]);
+  const existingQuantity = useMemo(() => Math.min(existing?.in_basket.quantity ?? 1, maxQuantity), [existing?.in_basket.quantity, maxQuantity]);
 
   async function runCardAction(action: () => Promise<void>) {
     setError(null);
@@ -57,7 +60,7 @@ function ProductCard({ product, index }: { product: StoreProduct; index: number 
         <span className="absolute right-3 top-3 z-10 inline-flex h-9 w-9 items-center justify-center rounded-[10px] border-cyan-pop bg-[#123550] text-cyan-pop shadow-lg transition group-hover:bg-[#16425f]">
           <Info size={17} />
         </span>
-        <img src={product.image} alt={product.name} className="mx-auto h-[168px] w-full object-contain p-4" />
+        <img src={product.image ?? "/rank-vip.svg"} alt={product.name} className="mx-auto h-[168px] w-full object-contain p-4" />
         <div className="border-t border-[#171b29] px-4 py-5">
           <h2 className="text-center font-black">{product.name}</h2>
         </div>
@@ -65,7 +68,7 @@ function ProductCard({ product, index }: { product: StoreProduct; index: number 
 
       <PriceDisplay product={product} className="mt-4" />
 
-      {product.userLimit === 1 && !existing ? (
+      {userLimit === 1 && !existing ? (
         <p className="mt-2 text-xs font-bold text-[#9fa4b3]">Limited to one purchase per player.</p>
       ) : null}
 
@@ -132,7 +135,7 @@ function ProductCard({ product, index }: { product: StoreProduct; index: number 
       {error ? <p className="mt-3 text-xs font-bold text-[#ff7777]">{error}</p> : null}
 
       <motion.div layout className="mt-4 space-y-2 text-[15px] text-[#c7cad6]">
-        {product.features.map((feature) => (
+        {details.features.map((feature) => (
           <div key={feature.text} className="flex gap-3">
             <span
               className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full ${
@@ -152,7 +155,7 @@ function ProductCard({ product, index }: { product: StoreProduct; index: number 
           <Dialog.Content className="fixed left-1/2 top-1/2 z-50 grid max-h-[86vh] w-[calc(100vw-32px)] max-w-[900px] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-[14px] bg-ink-900 shadow-2xl md:grid-cols-[280px_1fr]">
             <div className="bg-ink-850 p-5">
               <div className="overflow-hidden rounded-[10px] bg-ink-800">
-                <img src={product.image} alt={product.name} className="mx-auto h-[190px] w-full object-contain p-4" />
+                <img src={product.image ?? "/rank-vip.svg"} alt={product.name} className="mx-auto h-[190px] w-full object-contain p-4" />
                 <div className="border-t border-[#171b29] px-4 py-4">
                   <h2 className="text-center font-black">{product.name}</h2>
                 </div>
@@ -173,7 +176,7 @@ function ProductCard({ product, index }: { product: StoreProduct; index: number 
                   </Button>
                 </Dialog.Close>
               </div>
-              <RichHtml html={product.detailsHtml} className="rounded-[12px] bg-ink-800 p-4" />
+              <RichHtml html={details.details_html} className="rounded-[12px] bg-ink-800 p-4" />
             </div>
           </Dialog.Content>
         </Dialog.Portal>
@@ -182,7 +185,7 @@ function ProductCard({ product, index }: { product: StoreProduct; index: number 
       <Dialog.Root open={giftOpen} onOpenChange={setGiftOpen}>
         <Dialog.Portal>
           <Dialog.Overlay className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm" />
-          <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[calc(100vw-32px)] max-w-[520px] -translate-x-1/2 -translate-y-1/2 rounded-[14px] bg-ink-900 p-5 shadow-2xl md:p-6">
+          <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[calc(100vw-32px)] max-w-130 -translate-x-1/2 -translate-y-1/2 rounded-[14px] bg-ink-900 p-5 shadow-2xl md:p-6">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <Dialog.Title className="text-2xl font-black">Gift package</Dialog.Title>
@@ -201,7 +204,7 @@ function ProductCard({ product, index }: { product: StoreProduct; index: number 
                 value={giftUsername}
                 onChange={(event) => setGiftUsername(event.target.value)}
                 placeholder="Recipient username"
-                className="min-h-12 w-full rounded-[12px] border border-transparent bg-ink-800 px-4 font-black text-white outline-none ring-orange-pop/0 transition placeholder:text-[#9da3b4] focus:ring-2"
+                className="min-h-12 w-full rounded-xl border border-transparent bg-ink-800 px-4 font-black text-white outline-none ring-orange-pop/0 transition placeholder:text-[#9da3b4] focus:ring-2"
               />
               <Button
                 variant="orange"
@@ -226,19 +229,26 @@ function ProductCard({ product, index }: { product: StoreProduct; index: number 
   );
 }
 
-function PriceDisplay({ product, className = "" }: { product: StoreProduct; className?: string }) {
-  const onSale = Boolean(product.originalPrice && product.originalPrice > product.price);
-
-  if (!onSale) {
-    return <p className={`${className} font-black`}>{formatMoney(product.price, product.currency)}</p>;
-  }
+function PriceDisplay({ product, className = "" }: { product: Package; className?: string }) {
+  const onSale = product.discount > 0;
 
   return (
-    <div className={`${className} flex flex-wrap items-center justify-between gap-3`}>
-      <p className="font-black">{formatMoney(product.price, product.currency)}</p>
-      <div className="inline-flex items-center gap-1.5 rounded-[8px] bg-[#351d2d] px-2 py-1 text-sm font-black text-[#ff3838]">
-        <Tag size={14} className="fill-[#ff3838]" />
-        <span className="line-through">{formatMoney(product.originalPrice!, product.currency)}</span>
+    <div className={className}>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-baseline gap-2">
+          <p className="font-black">{formatMoney(product.base_price, product.currency)}</p>
+          {onSale ? (
+            <span className="text-sm font-black text-[#9fa4b3] line-through">
+              {formatMoney(product.base_price, product.currency)}
+            </span>
+          ) : null}
+        </div>
+        {onSale ? (
+          <div className="inline-flex items-center gap-1.5 rounded-lg bg-[#351d2d] px-2 py-1 text-sm font-black text-[#ff3838]">
+            <Tag size={14} className="fill-[#ff3838]" />
+            <span>{product.discount ? `${product.discount}% off` : "Sale"}</span>
+          </div>
+        ) : null}
       </div>
     </div>
   );

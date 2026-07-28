@@ -9,7 +9,7 @@ import { formatMoney } from "@/lib/utils";
 
 export function CartButton() {
   const { cart, setDrawerOpen } = useCart();
-  const count = cart.lines.reduce((sum, line) => sum + line.quantity, 0);
+  const count = cart.packages.reduce((sum, line) => sum + line.in_basket.quantity, 0);
 
   return (
     <button
@@ -53,16 +53,12 @@ export function CartDrawer() {
     setMessage("");
     try {
       const result = await checkout();
-      if (result.demo) {
-        setMessage("Demo mode: add TEBEX_PUBLIC_TOKEN to enable live checkout.");
+      if (result.auth_url) {
+        window.location.href = result.auth_url;
         return;
       }
-      if (result.authUrl) {
-        window.location.href = result.authUrl;
-        return;
-      }
-      if (result.checkoutUrl) {
-        window.location.href = result.checkoutUrl;
+      if (result.checkout_url) {
+        window.location.href = result.checkout_url;
       }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Checkout failed.");
@@ -98,40 +94,43 @@ export function CartDrawer() {
             </div>
 
             <div className="space-y-3">
-              {cart.lines.length === 0 ? (
+              {cart.packages.length === 0 ? (
                 <div className="rounded-[16px] bg-ink-850 p-6 text-sm text-[#b9bdca]">
                   Your basket is empty.
                 </div>
               ) : (
-                cart.lines.map((line) => (
+                cart.packages.map((line) => {
+                  const userLimit = typeof line.user_limit === "number" ? line.user_limit : line.user_limit?.limit;
+                  const quantity = line.in_basket.quantity;
+                  return (
                   <motion.div
                     layout
-                    key={line.packageId}
+                    key={line.id}
                     className="flex gap-3 rounded-[16px] bg-ink-850 p-3"
                   >
-                    <img src={line.image} alt="" className="h-16 w-16 rounded-[10px] object-cover" />
+                    <img src={line.image ?? "/rank-vip.svg"} alt="" className="h-16 w-16 rounded-[10px] object-cover" />
                     <div className="min-w-0 flex-1">
                       <p className="truncate font-black">{line.name}</p>
                       <p className="text-sm text-[#b9bdca]">
-                        {line.quantity} x {formatMoney(line.unitPrice, cart.currency)}
+                        {quantity} x {formatMoney(line.in_basket.price, cart.currency)}
                       </p>
-                      {line.userLimit === 1 ? null : (
+                      {userLimit === 1 || line.disable_quantity ? null : (
                         <div className="mt-2 inline-flex h-9 items-center rounded-[10px] bg-ink-900">
                           <button
                             type="button"
                             className="grid h-9 w-9 place-items-center text-cyan-pop disabled:opacity-40"
-                            disabled={pending || line.quantity <= 1}
-                            onClick={() => updateQuantity(line.packageId, line.quantity - 1)}
+                            disabled={pending || quantity <= 1}
+                            onClick={() => updateQuantity(line.id, quantity - 1)}
                             aria-label={`Decrease ${line.name} quantity`}
                           >
                             <Minus size={14} />
                           </button>
-                          <span className="w-10 text-center text-xs font-black">{line.quantity}</span>
+                          <span className="w-10 text-center text-xs font-black">{quantity}</span>
                           <button
                             type="button"
                             className="grid h-9 w-9 place-items-center text-cyan-pop disabled:opacity-40"
-                            disabled={pending || line.quantity >= (line.quantityLimit ?? 99)}
-                            onClick={() => updateQuantity(line.packageId, line.quantity + 1)}
+                            disabled={pending || quantity >= 99}
+                            onClick={() => updateQuantity(line.id, quantity + 1)}
                             aria-label={`Increase ${line.name} quantity`}
                           >
                             <Plus size={14} />
@@ -141,14 +140,14 @@ export function CartDrawer() {
                     </div>
                     <button
                       type="button"
-                      onClick={() => removeItem(line.packageId)}
+                      onClick={() => removeItem(line.id)}
                       className="grid h-10 w-10 place-items-center rounded-[10px] text-[#ff4545] hover:bg-[#342334]"
                       aria-label={`Remove ${line.name}`}
                     >
                       <Trash2 size={17} />
                     </button>
                   </motion.div>
-                ))
+                )})
               )}
             </div>
 
@@ -191,39 +190,37 @@ export function CartDrawer() {
               </div>
             </form>
 
-            <div className="mt-5 space-y-2 rounded-[16px] bg-ink-850 p-4 text-sm">
+           <div className="mt-5 space-y-2 rounded-[16px] bg-ink-850 p-4 text-sm">
               <div className="flex justify-between text-[#b9bdca]">
                 <span>Subtotal</span>
-                <span>{formatMoney(cart.basePrice, cart.currency)}</span>
+                <span>{formatMoney(cart.base_price, cart.currency)}</span>
               </div>
-              {cart.salesTax > 0 ? (
-                <div className="flex justify-between text-[#b9bdca]">
-                  <span>Tax</span>
-                  <span>{formatMoney(cart.salesTax, cart.currency)}</span>
-                </div>
-              ) : null}
+              <div className="flex justify-between text-[#b9bdca]">
+                <span>Sales tax</span>
+                <span>{formatMoney(cart.sales_tax, cart.currency)}</span>
+              </div>
               <div className="flex justify-between border-t border-[#30364b] pt-3 text-lg font-black">
                 <span>Total</span>
-                <span>{formatMoney(cart.totalPrice, cart.currency)}</span>
+                <span>{formatMoney(cart.total_price, cart.currency)}</span>
               </div>
-              {(cart.coupons.length > 0 || cart.giftcards.length > 0 || cart.creatorCode) && (
+              {(cart.coupons.length > 0 || cart.giftcards.length > 0 || cart.creator_code) && (
                 <p className="pt-2 text-xs font-bold text-cyan-pop">
-                  {[...cart.coupons, ...cart.giftcards, cart.creatorCode].filter(Boolean).join(", ")}
+                  {[...cart.coupons.map((item) => item.coupon_code), ...cart.giftcards.map((item) => item.card_number), cart.creator_code].filter(Boolean).join(", ")}
                 </p>
               )}
             </div>
 
-            {message && <p className="mt-4 rounded-[12px] bg-[#342334] p-3 text-sm text-orange-pop">{(message)}</p>}
+            {message && <p className="mt-4 rounded-xl bg-[#342334] p-3 text-sm text-orange-pop">{(message)}</p>}
 
             <Button
               className="mt-5 w-full"
-              disabled={pending || cart.lines.length === 0}
+              disabled={pending || cart.packages.length === 0}
               onClick={startCheckout}
             >
               <ShoppingBasket size={16} />
               Checkout
             </Button>
-            <p className="mt-3 text-xs text-[#858b9d]">Sales are final and non-refundable.</p>
+            <p className="mt-3 text-xs text-[#858b9d]">Sales are final and non-refundable. Sales tax may not propagate before checkout.</p>
           </motion.aside>
         </motion.div>
       ) : null}

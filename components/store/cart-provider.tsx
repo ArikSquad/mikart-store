@@ -1,13 +1,13 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, useTransition } from "react";
-import type { CartState } from "@/lib/types";
-import { createDemoCart } from "@/lib/demo-store";
+import { createEmptyBasket } from "@/lib/cart";
+import type { Basket } from "@/lib/types";
 
 type DiscountKind = "coupon" | "giftcard" | "creator";
 
 type CartContextValue = {
-  cart: CartState;
+  cart: Basket;
   username: string | null;
   setUsername: (username: string | null) => void;
   pending: boolean;
@@ -17,7 +17,7 @@ type CartContextValue = {
   updateQuantity: (packageId: number, quantity: number) => Promise<void>;
   removeItem: (packageId: number) => Promise<void>;
   applyDiscount: (kind: DiscountKind, code: string) => Promise<void>;
-  checkout: () => Promise<{ checkoutUrl?: string | null; authUrl?: string | null; demo?: boolean }>;
+  checkout: () => Promise<{ checkout_url?: string | null; auth_url?: string | null }>;
 };
 
 const CartContext = createContext<CartContextValue | null>(null);
@@ -40,7 +40,7 @@ async function postCart<T>(url: string, body?: unknown): Promise<T> {
 }
 
 export function CartProvider({ children }: { children: React.ReactNode }) {
-  const [cart, setCart] = useState<CartState>(() => createDemoCart());
+  const [cart, setCart] = useState<Basket>(() => createEmptyBasket());
   const [username, setUsernameState] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -66,7 +66,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const run = useCallback(async (work: () => Promise<CartState>) => {
+  const run = useCallback(async (work: () => Promise<Basket>) => {
     setManualPending(true);
     try {
       const nextCart = await work();
@@ -86,26 +86,16 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       drawerOpen,
       setDrawerOpen,
       addItem: async (packageId, quantity = 1, giftUsername) => {
-        await run(() => postCart<CartState>("/api/cart/add", { packageId, quantity, username, giftUsername }));
+        await run(() => postCart<Basket>("/api/cart/add", { packageId, quantity, username, giftUsername }));
       },
       updateQuantity: async (packageId, quantity) => {
-        if (cart.demo) {
-          const nextLines = cart.lines.map((line) =>
-            line.packageId === packageId
-              ? { ...line, quantity: Math.max(1, Math.min(quantity, line.quantityLimit ?? 99)) }
-              : line
-          );
-          const basePrice = Number(nextLines.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0).toFixed(2));
-          startTransition(() => setCart({ ...cart, lines: nextLines, basePrice, salesTax: 0, totalPrice: basePrice }));
-          return;
-        }
-        await run(() => postCart<CartState>("/api/cart/update", { packageId, quantity }));
+        await run(() => postCart<Basket>("/api/cart/update", { packageId, quantity }));
       },
       removeItem: async (packageId) => {
-        await run(() => postCart<CartState>("/api/cart/remove", { packageId }));
+        await run(() => postCart<Basket>("/api/cart/remove", { packageId }));
       },
       applyDiscount: async (kind, code) => {
-        await run(() => postCart<CartState>("/api/cart/discount", { kind, code }));
+        await run(() => postCart<Basket>("/api/cart/discount", { kind, code }));
       },
       checkout: () => postCart("/api/cart/checkout"),
     }),

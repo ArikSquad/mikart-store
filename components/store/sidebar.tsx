@@ -16,23 +16,16 @@ import {
   Users,
 } from "lucide-react";
 import { RichHtml } from "@/components/store/rich-html";
-import type { ServerStatus, SidebarData, SidebarModule, StoreCategory } from "@/lib/types";
-import { cn, formatMoney } from "@/lib/utils";
-
-const icons = {
-  home: Home,
-  crown: Crown,
-  box: Box,
-  newspaper: Newspaper,
-};
+import type { Category, MinecraftServerStatus, Module } from "@/lib/types";
+import { cn, formatMoney, slugify } from "@/lib/utils";
 
 export function Sidebar({
   categories,
-  sidebar,
+  modules,
   activeSlug,
 }: {
-  categories: StoreCategory[];
-  sidebar: SidebarData;
+  categories: Category[];
+  modules: Module[];
   activeSlug: string;
 }) {
   return (
@@ -43,13 +36,30 @@ export function Sidebar({
       </Link>
 
       <nav className="mt-6 space-y-2">
+        <Link
+          href="/"
+          className={cn(
+            "flex h-[60px] items-center gap-5 rounded-[14px] px-6 text-[15px] font-black transition",
+            activeSlug === "home"
+              ? "border-2 border-cyan-pop bg-[#123550] text-cyan-pop"
+              : "text-[#d9dbe3] hover:bg-ink-850 hover:text-white"
+          )}
+        >
+          <Home
+            size={19}
+            className={activeSlug === "home" ? "fill-cyan-pop/25" : "text-[#9fa4b3]"}
+            strokeWidth={3}
+          />
+          Home
+        </Link>
         {categories.map((category) => {
-          const Icon = icons[category.icon];
-          const active = activeSlug === category.slug;
+          const slug = category.slug ?? slugify(category.name);
+          const Icon = slug.includes("crate") ? Box : slug.includes("rank") ? Crown : Newspaper;
+          const active = activeSlug === slug;
           return (
             <Link
-              key={category.slug}
-              href={category.slug === "home" ? "/" : `/category/${category.slug}`}
+              key={category.id}
+              href={slug === "home" ? "/" : `/category/${slug}`}
               className={cn(
                 "flex h-[60px] items-center gap-5 rounded-[14px] px-6 text-[15px] font-black transition",
                 active
@@ -65,30 +75,30 @@ export function Sidebar({
       </nav>
 
       <div className="mt-8 space-y-6">
-        {sidebar.modules.map((module) => (
-          <SidebarModuleCard key={module.id} module={module} fallback={sidebar} />
+        {modules.map((module) => (
+          <SidebarModuleCard key={module.id} module={module} />
         ))}
       </div>
     </aside>
   );
 }
 
-function SidebarModuleCard({ module, fallback }: { module: SidebarModule; fallback: SidebarData }) {
+function SidebarModuleCard({ module }: { module: Module }) {
   if (module.type === "top_customer") {
     return (
       <section className="rounded-[14px] bg-ink-800 p-6">
         <h2 className="flex items-center gap-3 text-xl font-black">
           <Star size={24} className="fill-white" />
-          {module.header}
+          {module.data.header}
         </h2>
         <div className="mt-4 flex items-center gap-4">
           <div className="grid h-[136px] w-20 place-items-center overflow-hidden rounded-[12px] bg-ink-950">
-            <img src={module.avatar || fallback.topCustomer.avatar} alt="" className="h-[112px] object-contain" />
+            <img src={`https://mc-heads.net/body/${encodeURIComponent(module.data.username_id || module.data.username)}/96`} alt="" className="h-[112px] object-contain" />
           </div>
           <div className="min-w-0">
-            <p className="truncate text-lg font-black">{module.username}</p>
+            <p className="truncate text-lg font-black">{module.data.username}</p>
             <p className="text-[15px] text-[#c3c6d2]">
-              {module.total ? `Paid ${module.total} this year.` : "Paid the most this year."}
+              {module.data.total ? `Paid ${module.data.total} this year.` : "Paid the most this year."}
             </p>
           </div>
         </div>
@@ -97,28 +107,26 @@ function SidebarModuleCard({ module, fallback }: { module: SidebarModule; fallba
   }
 
   if (module.type === "recent_payments") {
-    const payments: { username: string; avatar: string; amount?: number }[] = module.payments.length
-      ? module.payments
-      : fallback.recentPayments.map((payment) => ({ username: payment.name, avatar: payment.avatar }));
+    const payments = module.data.payments;
     return (
       <section className="rounded-[14px] bg-ink-800 p-6">
         <h2 className="flex items-center gap-3 text-xl font-black">
           <Users size={24} />
-          {module.header}
+          {module.data.header}
         </h2>
         <div className="mt-4 flex gap-2">
           {payments.slice(0, 5).map((payment) => (
-            <div key={`${payment.username}-${payment.avatar}`} className="group relative">
+            <div key={`${payment.username}-${payment.username_id}`} className="group relative">
               <img
-                src={payment.avatar}
+                src={`https://mc-heads.net/avatar/${encodeURIComponent(payment.username_id || payment.username)}/48`}
                 alt={payment.username}
                 className="h-10 w-10 rounded-[8px] bg-ink-950 transition group-hover:-translate-y-1 group-hover:rotate-[-5deg]"
               />
               <div className="pointer-events-none absolute bottom-[52px] left-1/2 z-20 hidden min-w-[230px] -translate-x-1/2 items-center gap-3 rounded-[12px] bg-ink-900 p-3 shadow-2xl group-hover:flex">
-                <img src={payment.avatar} alt="" className="h-10 w-10 rounded-[8px]" />
+                <img src={`https://mc-heads.net/avatar/${encodeURIComponent(payment.username_id || payment.username)}/48`} alt="" className="h-10 w-10 rounded-[8px]" />
                 <div className="min-w-0">
                   <p className="truncate font-black">{payment.username}</p>
-                  {payment.amount ? <p className="text-xs text-[#aeb3c4]">{formatMoney(payment.amount)}</p> : null}
+                  {payment.price ? <p className="text-xs text-[#aeb3c4]">{formatMoney(payment.price, payment.currency ?? undefined)}</p> : null}
                 </div>
               </div>
             </div>
@@ -134,9 +142,9 @@ function SidebarModuleCard({ module, fallback }: { module: SidebarModule; fallba
       <section className="rounded-[14px] bg-ink-800 p-6">
         <h2 className="mb-3 flex items-center gap-3 text-xl font-black">
           <Newspaper size={22} />
-          {module.header}
+          {module.data.header}
         </h2>
-        <RichHtml html={module.html} />
+        <RichHtml html={module.data.text} />
       </section>
     );
   }
@@ -146,11 +154,11 @@ function SidebarModuleCard({ module, fallback }: { module: SidebarModule; fallba
       <section className="rounded-[14px] bg-ink-800 p-6">
         <h2 className="mb-4 flex items-center gap-3 text-xl font-black">
           <BadgeDollarSign size={22} />
-          {module.header}
+          {module.data.header}
         </h2>
-        {module.image ? <img src={module.image} alt="" className="mb-4 h-24 w-full rounded-[10px] object-contain bg-ink-950" /> : null}
-        <p className="font-black">{module.name}</p>
-        {module.price ? <p className="mt-1 text-sm text-[#c3c6d2]">{formatMoney(module.price, module.currency)}</p> : null}
+        {module.data.package.image ? <img src={module.data.package.image} alt="" className="mb-4 h-24 w-full rounded-[10px] object-contain bg-ink-950" /> : null}
+        <p className="font-black">{module.data.package.name}</p>
+        <p className="mt-1 text-sm text-[#c3c6d2]">{formatMoney(module.data.package.total_price, module.data.package.currency)}</p>
       </section>
     );
   }
@@ -160,15 +168,14 @@ function SidebarModuleCard({ module, fallback }: { module: SidebarModule; fallba
       <section className="rounded-[14px] bg-ink-800 p-6">
         <h2 className="flex items-center gap-3 text-xl font-black">
           <Server size={22} />
-          {module.header}
+          {module.data.header}
         </h2>
-        <p className={cn("mt-3 font-black", module.online ? "text-[#42e95d]" : "text-[#ff4545]")}>
-          {module.online ? "Online" : "Offline"}
+        <p className={cn("mt-3 font-black", module.data.online ? "text-[#42e95d]" : "text-[#ff4545]")}>
+          {module.data.online ? "Online" : "Offline"}
         </p>
-        {typeof module.players === "number" ? (
+        {module.data.players ? (
           <p className="text-sm text-[#c3c6d2]">
-            {module.players}
-            {module.maxPlayers ? `/${module.maxPlayers}` : ""} players
+            {module.data.players.online}/{module.data.players.max} players
           </p>
         ) : null}
       </section>
@@ -180,7 +187,7 @@ function SidebarModuleCard({ module, fallback }: { module: SidebarModule; fallba
       <section className="rounded-[14px] bg-ink-800 p-6">
         <h2 className="flex items-center gap-3 text-xl font-black">
           <Gift size={22} />
-          {module.header}
+          {module.data.header}
         </h2>
         <p className="mt-3 text-sm text-[#c3c6d2]">Apply a gift card from the basket drawer.</p>
       </section>
@@ -190,16 +197,15 @@ function SidebarModuleCard({ module, fallback }: { module: SidebarModule; fallba
   return <GoalModule module={module} />;
 }
 
-function GoalModule({ module }: { module: Extract<SidebarModule, { type: "payment_goal" | "community_goal" }> }) {
-  const percent = module.target > 0 ? Math.min(100, Math.round((module.current / module.target) * 100)) : 0;
+function GoalModule({ module }: { module: Extract<Module, { type: "payment_goal" | "community_goal" }> }) {
+  const percent = module.data.percentage;
 
   return (
     <section className="rounded-[14px] bg-ink-800 p-6">
       <h2 className="flex items-center gap-3 text-xl font-black">
         <Target size={22} />
-        {module.header}
+        {module.data.header}
       </h2>
-      {module.description ? <p className="mt-2 text-sm text-[#c3c6d2]">{module.description}</p> : null}
       <div className="mt-4 h-3 overflow-hidden rounded-full bg-ink-950">
         <div className="h-full rounded-full bg-cyan-pop" style={{ width: `${percent}%` }} />
       </div>
@@ -209,14 +215,14 @@ function GoalModule({ module }: { module: Extract<SidebarModule, { type: "paymen
 }
 
 function ServerButton() {
-  const [status, setStatus] = useState<ServerStatus>({ online: false, players: 0 });
+  const [status, setStatus] = useState<MinecraftServerStatus>({ online: false, players: 0 });
 
   useEffect(() => {
     let active = true;
     async function loadStatus() {
       try {
         const response = await fetch("/api/server-status", { cache: "no-store" });
-        const nextStatus = (await response.json()) as ServerStatus;
+        const nextStatus = (await response.json()) as MinecraftServerStatus;
         if (active) setStatus(nextStatus);
       } catch {
         if (active) setStatus({ online: false, players: 0 });
