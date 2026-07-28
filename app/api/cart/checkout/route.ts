@@ -6,7 +6,7 @@ export async function POST() {
   const cookieStore = await cookies();
   const cart = await getBasket(cookieStore.get("basket_ident")?.value);
 
-  if (!cart.ident || cart.lines.length === 0) {
+  if (!cart.ident || cart.packages.length === 0) {
     return NextResponse.json({ error: "Your basket is empty." }, { status: 400 });
   }
 
@@ -14,8 +14,8 @@ export async function POST() {
     const authUrl = await getBasketAuth(cart.ident);
     return NextResponse.json({
       ident: cart.ident,
-      checkoutUrl: cart.checkoutUrl,
-      authUrl,
+      checkout_url: cart.links.checkout,
+      auth_url: authUrl,
     });
   } catch (error) {
     return NextResponse.json(

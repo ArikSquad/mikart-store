@@ -3,13 +3,14 @@
 import Link from "next/link";
 import { LogIn, LogOut, Menu, PlayCircle, X } from "lucide-react";
 import { CartButton } from "@/components/store/cart-drawer";
-import type { StoreCategory } from "@/lib/types";
+import type { Category } from "@/lib/types";
+import { slugify } from "@/lib/utils";
 import { FormEvent, useState } from "react";
 import { useCart } from "@/components/store/cart-provider";
 import { Button } from "@/components/ui/button";
 import * as Dialog from "@/components/ui/dialog";
 
-export function Topbar({ categories }: { categories: StoreCategory[] }) {
+export function Topbar({ categories }: { categories: Category[] }) {
   const [open, setOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [draftUsername, setDraftUsername] = useState("");
@@ -72,16 +73,18 @@ export function Topbar({ categories }: { categories: StoreCategory[] }) {
 
       {open && (
         <nav className="mt-4 grid grid-cols-2 gap-2 lg:hidden">
-          {categories.map((category) => (
+          {categories.map((category) => {
+            const slug = category.slug ?? slugify(category.name);
+            return (
             <Link
-              key={category.slug}
-              href={category.slug === "home" ? "/" : `/category/${category.slug}`}
+              key={category.id}
+              href={slug === "home" ? "/" : `/category/${slug}`}
               onClick={() => setOpen(false)}
               className="rounded-[12px] bg-ink-850 px-4 py-3 text-sm font-black text-[#d9dbe3]"
             >
               {category.name}
             </Link>
-          ))}
+          )})}
           <a
             href="minecraft://?addExternalServer=MikArt|play.mikart.eu:25565"
             className="col-span-2 inline-flex items-center justify-center gap-2 rounded-[12px] border border-orange-pop bg-[#302525] px-4 py-3 text-sm font-black text-orange-pop"

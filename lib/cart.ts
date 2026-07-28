@@ -1,17 +1,27 @@
-import type { CartState } from "@/lib/types";
+import type { Basket } from "@/lib/types";
 
-export function createEmptyCart(): CartState {
+export function createEmptyBasket(): Basket {
   return {
-    ident: null,
-    lines: [],
+    ident: "",
+    complete: false,
+    id: "",
+    country: "",
+    ip: "",
+    username_id: null,
+    username: null,
+    cancel_url: "",
+    complete_url: null,
+    complete_auto_redirect: false,
     coupons: [],
     giftcards: [],
-    creatorCode: null,
-    basePrice: 0,
-    salesTax: 0,
-    totalPrice: 0,
+    creator_code: "",
+    base_price: 0,
+    sales_tax: 0,
+    total_price: 0,
+    email: null,
     currency: "EUR",
-    checkoutUrl: null,
-    authUrl: null,
+    packages: [],
+    links: { checkout: "" },
+    custom: null,
   };
 }
