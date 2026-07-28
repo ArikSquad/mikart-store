@@ -227,32 +227,26 @@ function ProductCard({ product, index }: { product: StoreProduct; index: number 
 }
 
 function PriceDisplay({ product, className = "" }: { product: StoreProduct; className?: string }) {
-  const onSale = Boolean(product.originalPrice && product.originalPrice > product.price);
-  const taxInclusivePrice = product.totalPrice && product.totalPrice > product.price ? product.totalPrice : undefined;
+  const onSale = Boolean(product.totalPrice && product.totalPrice > product.totalPrice);
 
   return (
-    <div className={`${className} space-y-1`}>
+    <div className={className}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-baseline gap-2">
-          <p className="font-black">{formatMoney(product.price, product.currency)}</p>
+          <p className="font-black">{formatMoney(product.totalPrice, product.currency)}</p>
           {onSale ? (
             <span className="text-sm font-black text-[#9fa4b3] line-through">
-              {formatMoney(product.originalPrice!, product.currency)}
+              {formatMoney(product.totalPrice!, product.currency)}
             </span>
           ) : null}
         </div>
         {onSale ? (
-          <div className="inline-flex items-center gap-1.5 rounded-[8px] bg-[#351d2d] px-2 py-1 text-sm font-black text-[#ff3838]">
+          <div className="inline-flex items-center gap-1.5 rounded-lg bg-[#351d2d] px-2 py-1 text-sm font-black text-[#ff3838]">
             <Tag size={14} className="fill-[#ff3838]" />
             <span>{product.salePercent ? `${product.salePercent}% off` : "Sale"}</span>
           </div>
         ) : null}
       </div>
-      {taxInclusivePrice ? (
-        <p className="text-xs font-bold text-[#9fa4b3]">
-          {formatMoney(taxInclusivePrice, product.currency)} including sales tax / VAT
-        </p>
-      ) : null}
     </div>
   );
 }

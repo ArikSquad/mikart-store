@@ -26,7 +26,7 @@ export default async function CategoryPage({ params }: { params: Promise<{ slug:
             <p className="mt-2 text-[#c7cad6]">{category.description}</p>
           </section>
           <Suspense fallback={<StoreSkeleton />}>
-            <ProductGrid products={category.products} />
+            <ProductGrid products={category.packages} />
           </Suspense>
         </div>
     </StoreShell>

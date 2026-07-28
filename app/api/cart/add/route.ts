@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "packageId is required" }, { status: 400 });
   }
 
-  if (process.env.TEBEX_PUBLIC_TOKEN && !username) {
+  if (!username) {
     return NextResponse.json({ error: "Connect your Minecraft account first." }, { status: 401 });
   }
 

@@ -1,23 +1,69 @@
 import { cacheLife } from "next/cache";
 import { cookies, headers } from "next/headers";
 import sanitizeHtml from "sanitize-html";
-import { demoStorefront, createDemoCart, findDemoProduct } from "@/lib/demo-store";
-import type { CartLine, CartState, ServerStatus, SidebarData, SidebarModule, StoreCategory, StorefrontData, StoreProduct } from "@/lib/types";
+import { createEmptyCart } from "@/lib/cart";
+import type { CartState, ServerStatus, SidebarData, SidebarModule, StoreCategory, StorefrontData, StoreProduct } from "@/lib/types";
 import { slugify } from "@/lib/utils";
 
 const API_BASE = "https://headless.tebex.io/api";
 const token = process.env.TEBEX_PUBLIC_TOKEN;
 
 type TebexEnvelope<T> = { data: T };
-type RawPackage = Record<string, unknown>;
-type RawCategory = Record<string, unknown> & { packages?: RawPackage[] };
-type RawBasket = Record<string, unknown> & {
-  ident?: string;
-  packages?: RawPackage[];
-  coupons?: { coupon_code?: string }[];
-  giftcards?: { card_number?: string }[];
-  links?: { checkout?: string; payment?: string };
+
+type RawPackage = {
+  id?: number;
+  name?: string;
+  slug?: string;
+  description?: string;
+  image?: string | null;
+  media: object;
+  category: { id: number, name: string };
+  base_price: number;
+  sales_tax: number;
+  total_price: number;
+  currency: string;
+  discount: number;
+  disable_quantity: boolean;
+  disable_gifting: boolean;
+  expiration_date: null | Date;
+  created_at: Date;
+  updated_at: Date;
+  order: number;
+  creator_meta_data: null | object;
+  vip_status: object | null;
+  user_limit?: { limit?: number } | null;
+  qty?: number;
 };
+
+type RawCategory = {
+  id?: number;
+  name?: string;
+  description?: string;
+  packages?: RawPackage[];
+};
+
+type RawBasket = {
+  ident: string;
+  complete: boolean;
+  email: string;
+  country: string;
+  ip: string;
+  username: string;
+  username_id: string;
+  cancel_url: string;
+  complete_url: string;
+  complete_auto_redirect: true;
+  base_price: number;
+  sales_tax: number;
+  total_price: number;
+  currency: string; // 'EUR' for example.
+  packages?: RawPackage[];
+  creator_code?: string;
+  coupons: { coupon_code?: string }[];
+  giftcards: { card_number?: string }[];
+  links: { checkout?: string; payment?: string };
+};
+
 type RawSidebarModule = {
   id?: string | number;
   type?: string | null;
@@ -31,10 +77,6 @@ class TebexError extends Error {
   ) {
     super(message);
   }
-}
-
-function isConfigured() {
-  return Boolean(token);
 }
 
 async function tebexFetch<T>(path: string, init?: RequestInit, cache: RequestCache = "force-cache") {
@@ -127,97 +169,33 @@ function valueNumber(value: unknown, fallback = 0) {
   return Number.isFinite(number) ? number : fallback;
 }
 
-function optionalNumber(...values: unknown[]) {
-  for (const value of values) {
-    const number = Number(value);
-    if (Number.isFinite(number) && number > 0) return number;
-  }
-  return undefined;
-}
-
-function firstRecord(...values: unknown[]) {
-  return values.find((value): value is Record<string, unknown> => Boolean(value) && typeof value === "object" && !Array.isArray(value));
-}
-
-function linePackageId(pkg: RawPackage) {
-  const packageRecord = firstRecord(pkg.package, pkg.package_data, pkg.packageData);
-  return valueNumber(
-    pkg.id ??
-      pkg.package_id ??
-      pkg.packageId ??
-      pkg.in_basket_package_id ??
-      packageRecord?.id ??
-      packageRecord?.package_id
-  );
-}
-
-function lineUnitPrice(pkg: RawPackage) {
-  const packageRecord = firstRecord(pkg.package, pkg.package_data, pkg.packageData);
-  const basketRecord = firstRecord(pkg.in_basket, pkg.inBasket);
-  const quantity = Math.max(1, valueNumber(pkg.qty ?? pkg.quantity, 1));
-  const total = valueNumber(pkg.total_price ?? pkg.price_total ?? pkg.total, 0);
-  if (total > 0 && quantity > 1) return Number((total / quantity).toFixed(2));
-  return valueNumber(
-    pkg.price ??
-      pkg.base_price ??
-      pkg.unit_price ??
-      basketRecord?.price ??
-      packageRecord?.price ??
-      packageRecord?.base_price ??
-      pkg.total_price
-  );
-}
-
 function normalizePackage(pkg: RawPackage, categorySlug: string): StoreProduct {
-  const id = valueNumber(pkg.id ?? pkg.package_id);
+  const id = valueNumber(pkg.id);
   const name = String(pkg.name ?? "Package");
-  const saleRecord = firstRecord(pkg.sale, pkg.discount, pkg.discounted);
-  const totalPrice = optionalNumber(pkg.total_price, pkg.price_including_tax, pkg.price_with_tax);
-  const listedPrice =
-    valueNumber(pkg.base_price) ||
-    valueNumber(pkg.price) ||
-    valueNumber(pkg.unit_price) ||
-    valueNumber(pkg.total_price);
-  const originalPriceCandidate = optionalNumber(
-    pkg.original_price,
-    pkg.regular_price,
-    pkg.price_original,
-    saleRecord?.original_price,
-    saleRecord?.base_price
-  );
-  const salePercent = optionalNumber(
-    pkg.salePercent,
-    pkg.sale_percent,
-    pkg.discount_percent,
-    saleRecord?.percent,
-    saleRecord?.percentage
-  );
-  const discountAmount = optionalNumber(pkg.discount_amount, saleRecord?.amount);
-  const derivedOriginalPrice =
-    originalPriceCandidate && originalPriceCandidate > listedPrice
-      ? originalPriceCandidate
-      : salePercent && salePercent < 100
-        ? Number((listedPrice / (1 - salePercent / 100)).toFixed(2))
-        : discountAmount
-          ? Number((listedPrice + discountAmount).toFixed(2))
-          : undefined;
-  const price = listedPrice;
-  const originalPrice = derivedOriginalPrice && derivedOriginalPrice > price ? derivedOriginalPrice : undefined;
-  const image = String(pkg.image ?? (pkg as { image_url?: unknown }).image_url ?? "") || "/rank-vip.svg";
+  const totalPrice = valueNumber(pkg.total_price);
+  const basePrice = valueNumber(pkg.base_price);
+  const salesTax = valueNumber(pkg.sales_tax);
+  const salePercent = valueNumber(pkg.discount) || undefined;
+  const discount = valueNumber(pkg.discount);
+  const originalPrice = salePercent && salePercent < 100
+    ? Number((totalPrice / (1 - salePercent / 100)).toFixed(2))
+    : undefined;
+  const image = String(pkg.image ?? "") || "/rank-vip.svg";
   const currency = String(pkg.currency ?? "EUR");
-  const rawQuantityLimit = valueNumber((pkg as { limit?: unknown }).limit, 0) || undefined;
-  const rawUserLimit = valueNumber((pkg as { user_limit?: unknown }).user_limit, 0) || undefined;
+  const rawUserLimit = valueNumber(pkg.user_limit?.limit, 0) || undefined;
   const isRank = categorySlug.includes("rank");
-  const quantityLimit = rawQuantityLimit ?? (isRank ? 1 : undefined);
+  const quantityLimit = pkg.disable_quantity || isRank ? 1 : undefined;
   const userLimit = rawUserLimit ?? (isRank ? 1 : undefined);
   const parsed = parseDescription(String(pkg.description ?? "Package delivered automatically after checkout."));
 
   return {
     id,
     name,
-    price,
-    originalPrice: originalPrice && originalPrice > price ? originalPrice : undefined,
-    totalPrice: totalPrice && totalPrice !== price ? totalPrice : undefined,
+    totalPrice,
+    basePrice,
+    salesTax,
+    discount,
+    // TODO: originalPrice,
     currency,
     image,
     categorySlug,
@@ -226,7 +204,7 @@ function normalizePackage(pkg: RawPackage, categorySlug: string): StoreProduct {
     detailsHtml: parsed.detailsHtml,
     quantityLimit,
     userLimit,
-    salePercent: salePercent ?? (originalPrice ? Math.round((1 - price / originalPrice) * 100) : undefined),
+    salePercent,
     features:
       parsed.features.length > 0
         ? parsed.features
@@ -235,7 +213,7 @@ function normalizePackage(pkg: RawPackage, categorySlug: string): StoreProduct {
 }
 
 function normalizeCategory(category: RawCategory): StoreCategory {
-  const name = String(category.name ?? "Category");
+  const name = String(category.name);
   const slug = slugify(name);
   const icon = slug.includes("crate") ? "box" : slug.includes("rank") ? "crown" : "newspaper";
 
@@ -245,7 +223,7 @@ function normalizeCategory(category: RawCategory): StoreCategory {
     slug,
     description: stripTags(String(category.description ?? `Browse ${name}.`)),
     icon,
-    products: (category.packages ?? []).map((pkg) => normalizePackage(pkg, slug)),
+    packages: category.packages!.map((pkg) => normalizePackage(pkg, slug)),
   };
 }
 
@@ -253,57 +231,23 @@ export async function getStorefront(): Promise<StorefrontData> {
   "use cache";
   cacheLife("minutes");
 
-  if (!isConfigured()) return demoStorefront;
-
-  try {
-    const [result, sidebar] = await Promise.all([
-      tebexFetch<TebexEnvelope<RawCategory[]>>(`/accounts/${token}/categories?includePackages=1`),
-      getSidebarData(),
-    ]);
-    const categories = result.data.map(normalizeCategory);
-    return {
-      categories: [
-        demoStorefront.categories[0],
-        ...categories
-      ],
-      sidebar,
-      currency: categories[0]?.products[0]?.currency ?? "EUR",
-    };
-  } catch {
-    return demoStorefront;
-  }
+  const [result, sidebar] = await Promise.all([
+    tebexFetch<TebexEnvelope<RawCategory[]>>(`/accounts/${token}/categories?includePackages=1`),
+    getSidebarData(),
+  ]);
+  const categories = result.data.map(normalizeCategory);
+  return {
+    categories,
+    sidebar,
+    currency: categories[0]?.packages[0]?.currency ?? "EUR",
+  };
 }
 
 async function getSidebarData(): Promise<SidebarData> {
-  if (!isConfigured()) return demoStorefront.sidebar;
-
-  try {
-    const result = await tebexFetch<TebexEnvelope<RawSidebarModule[]>>(`/accounts/${token}/sidebar`);
-    const modules = result.data.map(normalizeSidebarModule).filter((module): module is SidebarModule => Boolean(module));
-    const topCustomer = modules.find((module) => module.type === "top_customer");
-    const recentPayments = modules.find((module) => module.type === "recent_payments");
-
-    return {
-      modules: modules.length > 0 ? modules : demoStorefront.sidebar.modules,
-      topCustomer:
-        topCustomer?.type === "top_customer"
-          ? {
-              name: topCustomer.username,
-              caption: topCustomer.total ? `Paid ${topCustomer.total} this year.` : "Paid the most this year.",
-              avatar: minecraftBody(topCustomer.usernameId ?? topCustomer.username, 96),
-            }
-          : demoStorefront.sidebar.topCustomer,
-      recentPayments:
-        recentPayments?.type === "recent_payments"
-          ? recentPayments.payments.map((payment) => ({
-              name: payment.username,
-              avatar: minecraftAvatar(payment.usernameId ?? payment.username, 48),
-            }))
-          : demoStorefront.sidebar.recentPayments,
-    };
-  } catch {
-    return demoStorefront.sidebar;
-  }
+  const result = await tebexFetch<TebexEnvelope<RawSidebarModule[]>>(`/accounts/${token}/sidebar`);
+  return {
+    modules: result.data.map(normalizeSidebarModule).filter((module): module is SidebarModule => Boolean(module)),
+  };
 }
 
 function normalizeSidebarModule(module: RawSidebarModule): SidebarModule | null {
@@ -403,7 +347,7 @@ function normalizeSidebarModule(module: RawSidebarModule): SidebarModule | null 
 }
 
 export async function getBasket(ident?: string | null): Promise<CartState> {
-  if (!isConfigured() || !ident || ident === "demo-basket") return createDemoCart();
+  if (!ident) return createEmptyCart();
 
   try {
     const result = await tebexFetch<TebexEnvelope<RawBasket>>(
@@ -411,16 +355,15 @@ export async function getBasket(ident?: string | null): Promise<CartState> {
       undefined,
       "no-store"
     );
+
     return enrichCartPrices(normalizeBasket(result.data));
   } catch (error) {
-    if (isMissingBasket(error)) return createDemoCart();
+    if (isMissingBasket(error)) return createEmptyCart();
     throw error;
   }
 }
 
 export async function createBasket(username?: string) {
-  if (!isConfigured()) return createDemoCart();
-
   const requestHeaders = await headers();
   const host = requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host") ?? "localhost:3000";
   const proto = requestHeaders.get("x-forwarded-proto") ?? "http";
@@ -439,6 +382,7 @@ export async function createBasket(username?: string) {
     },
     "no-store"
   );
+
   return normalizeBasket(result.data);
 }
 
@@ -500,21 +444,6 @@ export async function addPackage(productId: number, quantity: number, username?:
   const cookieStore = await cookies();
   const ident = cookieStore.get("basket_ident")?.value;
 
-  if (!isConfigured()) {
-    const product = findDemoProduct(productId);
-    if (!product) return createDemoCart();
-    const line: CartLine = {
-      packageId: product.id,
-      name: product.name,
-      quantity: product.userLimit === 1 ? 1 : Math.min(quantity, product.quantityLimit ?? 99),
-      unitPrice: product.price,
-      image: product.image,
-      quantityLimit: product.quantityLimit,
-      userLimit: product.userLimit,
-    };
-    return createDemoCart([line]);
-  }
-
   const basket = ident ? await getBasket(ident) : await createBasket(username);
   const activeBasket = basket.ident ? basket : await createBasket(username);
 
@@ -532,7 +461,7 @@ export async function addPackage(productId: number, quantity: number, username?:
 export async function updatePackageQuantity(productId: number, quantity: number) {
   const cookieStore = await cookies();
   const ident = cookieStore.get("basket_ident")?.value;
-  if (!isConfigured() || !ident) return createDemoCart();
+  if (!ident) return createEmptyCart();
 
   await tebexFetch(`/baskets/${ident}/packages/${productId}`, {
     method: "PUT",
@@ -544,7 +473,7 @@ export async function updatePackageQuantity(productId: number, quantity: number)
 export async function removePackage(productId: number) {
   const cookieStore = await cookies();
   const ident = cookieStore.get("basket_ident")?.value;
-  if (!isConfigured() || !ident) return createDemoCart();
+  if (!ident) return createEmptyCart();
 
   await tebexFetch(`/baskets/${ident}/packages/remove`, {
     method: "POST",
@@ -556,13 +485,7 @@ export async function removePackage(productId: number) {
 export async function applyDiscount(kind: "coupon" | "giftcard" | "creator", code: string) {
   const cookieStore = await cookies();
   const ident = cookieStore.get("basket_ident")?.value;
-  if (!isConfigured() || !ident) {
-    const cart = createDemoCart();
-    if (kind === "creator") cart.creatorCode = code;
-    if (kind === "coupon") cart.coupons = [code];
-    if (kind === "giftcard") cart.giftcards = [code];
-    return cart;
-  }
+  if (!ident) throw new Error("Your basket is empty.");
 
   const endpoints = {
     coupon: "coupons",
@@ -579,7 +502,6 @@ export async function applyDiscount(kind: "coupon" | "giftcard" | "creator", cod
 }
 
 export async function getBasketAuth(ident: string) {
-  if (!isConfigured()) return null;
   const requestHeaders = await headers();
   const host = requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host") ?? "localhost:3000";
   const proto = requestHeaders.get("x-forwarded-proto") ?? "http";
@@ -594,22 +516,20 @@ export async function getBasketAuth(ident: string) {
 
 export function normalizeBasket(basket: RawBasket): CartState {
   const lines = (basket.packages ?? []).map((pkg) => {
-    const packageRecord = firstRecord(pkg.package, pkg.package_data, pkg.packageData);
-    const basketRecord = firstRecord(pkg.in_basket, pkg.inBasket);
     return {
-      packageId: linePackageId(pkg),
-      name: String(pkg.name ?? packageRecord?.name ?? "Package"),
-      quantity: Math.max(1, valueNumber(pkg.qty ?? pkg.quantity ?? basketRecord?.quantity, 1)),
-      unitPrice: lineUnitPrice(pkg),
-      image: String(pkg.image ?? packageRecord?.image ?? packageRecord?.image_url ?? "/rank-vip.svg"),
-      quantityLimit: valueNumber(pkg.limit ?? packageRecord?.limit, 0) || undefined,
-      userLimit: valueNumber(pkg.user_limit ?? packageRecord?.user_limit, 0) || undefined,
+      packageId: valueNumber(pkg.id),
+      name: String(pkg.name ?? "Package"),
+      quantity: Math.max(1, valueNumber(pkg.qty, 1)),
+      unitPrice: valueNumber(pkg.base_price),
+      image: String(pkg.image ?? "") || "/rank-vip.svg",
+      quantityLimit: pkg.disable_quantity ? 1 : undefined,
+      userLimit: valueNumber(pkg.user_limit?.limit, 0) || undefined,
     };
   });
 
   const computedBasePrice = Number(lines.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0).toFixed(2));
   const basePrice = valueNumber(basket.base_price, computedBasePrice) || computedBasePrice;
-  const salesTax = valueNumber(basket.sales_tax ?? basket.tax, 0);
+  const salesTax = valueNumber(basket.sales_tax, 0);
   const totalPrice = valueNumber(basket.total_price, Number((basePrice + salesTax).toFixed(2))) || Number((basePrice + salesTax).toFixed(2));
 
   return {
@@ -623,7 +543,6 @@ export function normalizeBasket(basket: RawBasket): CartState {
     totalPrice,
     currency: String(basket.currency ?? "EUR"),
     checkoutUrl: basket.links?.checkout ?? null,
-    demo: false,
   };
 }
 
@@ -632,7 +551,7 @@ async function enrichCartPrices(cart: CartState): Promise<CartState> {
   try {
     const storefront = await getStorefront();
     const products = new Map(
-      storefront.categories.flatMap((category) => category.products).map((product) => [product.id, product])
+      storefront.categories.flatMap((category) => category.packages).map((product) => [product.id, product])
     );
     const lines = cart.lines.map((line) => {
       const product = products.get(line.packageId);
@@ -640,20 +559,16 @@ async function enrichCartPrices(cart: CartState): Promise<CartState> {
         ? {
             ...line,
             name: product.name,
-            unitPrice: product.price,
+            unitPrice: product.totalPrice,
             image: product.image,
             quantityLimit: product.quantityLimit,
             userLimit: product.userLimit,
           }
         : line;
     });
-    const basePrice = Number(lines.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0).toFixed(2));
-    const hasValueCode = cart.coupons.length > 0 || cart.giftcards.length > 0;
     return {
       ...cart,
       lines,
-      basePrice,
-      totalPrice: hasValueCode ? cart.totalPrice : Number((basePrice + cart.salesTax).toFixed(2)),
     };
   } catch {
     return cart;

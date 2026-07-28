@@ -66,14 +66,14 @@ export function Sidebar({
 
       <div className="mt-8 space-y-6">
         {sidebar.modules.map((module) => (
-          <SidebarModuleCard key={module.id} module={module} fallback={sidebar} />
+          <SidebarModuleCard key={module.id} module={module} />
         ))}
       </div>
     </aside>
   );
 }
 
-function SidebarModuleCard({ module, fallback }: { module: SidebarModule; fallback: SidebarData }) {
+function SidebarModuleCard({ module }: { module: SidebarModule }) {
   if (module.type === "top_customer") {
     return (
       <section className="rounded-[14px] bg-ink-800 p-6">
@@ -83,7 +83,7 @@ function SidebarModuleCard({ module, fallback }: { module: SidebarModule; fallba
         </h2>
         <div className="mt-4 flex items-center gap-4">
           <div className="grid h-[136px] w-20 place-items-center overflow-hidden rounded-[12px] bg-ink-950">
-            <img src={module.avatar || fallback.topCustomer.avatar} alt="" className="h-[112px] object-contain" />
+            <img src={module.avatar} alt="" className="h-[112px] object-contain" />
           </div>
           <div className="min-w-0">
             <p className="truncate text-lg font-black">{module.username}</p>
@@ -97,9 +97,7 @@ function SidebarModuleCard({ module, fallback }: { module: SidebarModule; fallba
   }
 
   if (module.type === "recent_payments") {
-    const payments: { username: string; avatar: string; amount?: number }[] = module.payments.length
-      ? module.payments
-      : fallback.recentPayments.map((payment) => ({ username: payment.name, avatar: payment.avatar }));
+    const payments = module.payments;
     return (
       <section className="rounded-[14px] bg-ink-800 p-6">
         <h2 className="flex items-center gap-3 text-xl font-black">

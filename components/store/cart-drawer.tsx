@@ -53,10 +53,6 @@ export function CartDrawer() {
     setMessage("");
     try {
       const result = await checkout();
-      if (result.demo) {
-        setMessage("Demo mode: add TEBEX_PUBLIC_TOKEN to enable live checkout.");
-        return;
-      }
       if (result.authUrl) {
         window.location.href = result.authUrl;
         return;
@@ -191,17 +187,15 @@ export function CartDrawer() {
               </div>
             </form>
 
-            <div className="mt-5 space-y-2 rounded-[16px] bg-ink-850 p-4 text-sm">
+           <div className="mt-5 space-y-2 rounded-[16px] bg-ink-850 p-4 text-sm">
               <div className="flex justify-between text-[#b9bdca]">
                 <span>Subtotal</span>
                 <span>{formatMoney(cart.basePrice, cart.currency)}</span>
               </div>
-              {cart.salesTax > 0 ? (
-                <div className="flex justify-between text-[#b9bdca]">
-                  <span>Sales tax / VAT</span>
-                  <span>{formatMoney(cart.salesTax, cart.currency)}</span>
-                </div>
-              ) : null}
+              <div className="flex justify-between text-[#b9bdca]">
+                <span>Sales tax / VAT</span>
+                <span>{formatMoney(cart.salesTax, cart.currency)}</span>
+              </div>
               <div className="flex justify-between border-t border-[#30364b] pt-3 text-lg font-black">
                 <span>Total incl. tax / VAT</span>
                 <span>{formatMoney(cart.totalPrice, cart.currency)}</span>
