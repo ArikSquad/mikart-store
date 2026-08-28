@@ -1,10 +1,12 @@
-import { Code2, ExternalLink, GitBranch, GitBranchPlus, Ruler, Video } from "lucide-react";
+import Link from "next/link";
+import { cacheLife } from "next/cache";
+import { type ReactNode } from "react";
+import { ExternalLink, GitBranch, Ruler } from "lucide-react";
 import { CartDrawer } from "@/components/store/cart-drawer";
 import { CartProvider } from "@/components/store/cart-provider";
 import { Sidebar } from "@/components/store/sidebar";
 import { Topbar } from "@/components/store/topbar";
 import type { Storefront } from "@/lib/types";
-import Link from "next/link";
 
 export function StoreShell({
   data,
@@ -13,7 +15,7 @@ export function StoreShell({
 }: {
   data: Storefront;
   activeSlug: string;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <CartProvider>
@@ -32,11 +34,16 @@ export function StoreShell({
   );
 }
 
-function Footer() {
+async function Footer() {
+  "use cache";
+  cacheLife("days");
+
+  const year = new Date().getFullYear();
+
   return (
     <footer className="mt-12 flex flex-col gap-6 pb-6 md:flex-row md:items-center md:justify-between">
       <div>
-        <p className="font-black">Copyright © MikArt Europe 2026.</p>
+        <p className="font-black">Copyright © MikArt Europe {year}.</p>
         <p className="text-xs tracking-wide text-[#b8bdcd]">
           Powered by Tebex.io. We are not affiliated with Mojang AB.
         </p>
@@ -45,7 +52,7 @@ function Footer() {
         <Link className="grid h-16 w-16 place-items-center rounded-[14px] bg-ink-900 text-[#9da3b4]" href="https://github.com/ArikSquad/mikart-store" target="_blank" rel="noopener noreferrer" aria-label="GitHub">
           <GitBranch size={20} />
         </Link>
-        <Link className="grid h-16 w-16 place-items-center rounded-[14px] bg-ink-900 text-[#9da3b4]" href="https://www.mikart.eu/docs/minecraft/rules" target="_blank" rel="noopener noreferrer" aria-label="YouTube">
+        <Link className="grid h-16 w-16 place-items-center rounded-[14px] bg-ink-900 text-[#9da3b4]" href="https://www.mikart.eu/docs/minecraft/rules" target="_blank" rel="noopener noreferrer" aria-label="Minecraft server rules">
           <Ruler size={22} />
         </Link>
         <Link className="flex h-16 items-center gap-4 rounded-[14px] bg-ink-900 px-6" href="https://www.mikart.eu/" target="_blank" rel="noopener noreferrer">

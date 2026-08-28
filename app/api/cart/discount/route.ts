@@ -1,22 +1,23 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
+import { errorResponse, jsonError } from "@/lib/api-response";
+import { isDiscountKind } from "@/lib/cart";
 import { applyDiscount } from "@/lib/tebex";
+import { normalizeString, readJsonObject } from "@/lib/validation";
 
 export async function POST(request: NextRequest) {
-  const body = await request.json().catch(() => ({}));
-  const kind = body.kind as "coupon" | "giftcard" | "creator";
-  const code = String(body.code ?? "").trim();
+  const body = await readJsonObject(request);
+  if (!body) return jsonError("Request body must be a JSON object.", 400);
 
-  if (!["coupon", "giftcard", "creator"].includes(kind) || !code) {
-    return NextResponse.json({ error: "kind and code are required" }, { status: 400 });
+  const code = normalizeString(body.code);
+  if (!isDiscountKind(body.kind) || !code) {
+    return jsonError("kind and code are required.", 400);
   }
 
   try {
-    const cart = await applyDiscount(kind, code);
+    const cart = await applyDiscount(body.kind, code);
     return NextResponse.json(cart);
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Could not apply code." },
-      { status: 502 }
-    );
+    return errorResponse(error, "Could not apply code.");
   }
 }

@@ -1,37 +1,24 @@
-import sanitizeHtml from "sanitize-html";
 import type { PackageDetails } from "@/lib/types";
+import { sanitizeRichHtml, stripHtml } from "@/lib/html";
 
-function cleanHtml(html: string) {
-  return sanitizeHtml(html, {
-    allowedTags: ["p", "br", "strong", "b", "em", "i", "u", "ul", "ol", "li", "a", "span"],
-    allowedAttributes: { a: ["href", "target", "rel"] },
-    transformTags: {
-      a: sanitizeHtml.simpleTransform("a", { rel: "noopener noreferrer", target: "_blank" }),
-    },
-  }).trim();
-}
-
-function stripTags(html: string) {
-  return sanitizeHtml(html, { allowedTags: [], allowedAttributes: {} })
-    .replace(/\s+/g, " ")
-    .trim();
-}
+const TABLE_PATTERN = /<table[\s\S]*?<\/table>/i;
+const TABLE_ROW_PATTERN = /<tr[\s\S]*?<\/tr>/gi;
+const TABLE_CELL_PATTERN = /<td[\s\S]*?>([\s\S]*?)<\/td>/gi;
+const POSITIVE_FLAGS = new Set(["yes", "y", "true", "1", "check", "✓"]);
 
 export function getPackageDetails(description: string): PackageDetails {
-  const tablePattern = /<table[\s\S]*?<\/table>/i;
-  const table = description.match(tablePattern)?.[0] ?? "";
-  const features = Array.from(table.matchAll(/<tr[\s\S]*?<\/tr>/gi))
-    .map((row) => Array.from(row[0].matchAll(/<td[\s\S]*?>([\s\S]*?)<\/td>/gi)).map((cell) => stripTags(cell[1])))
+  const table = description.match(TABLE_PATTERN)?.[0] ?? "";
+  const features = Array.from(table.matchAll(TABLE_ROW_PATTERN))
+    .map(([rowHtml]) => Array.from(rowHtml.matchAll(TABLE_CELL_PATTERN)).map(([, cellHtml]) => stripHtml(cellHtml)))
     .filter((cells) => cells.length >= 2)
     .map(([flag, ...rest]) => ({
-      positive: ["yes", "y", "true", "1", "check", "✓"].includes(flag.toLowerCase()),
+      positive: POSITIVE_FLAGS.has(flag.toLowerCase()),
       text: rest.join(" ").trim(),
     }))
     .filter((feature) => feature.text.length > 0);
 
   return {
-    description_html: cleanHtml(description),
-    details_html: cleanHtml(description.replace(tablePattern, "")),
+    detailsHtml: sanitizeRichHtml(description.replace(TABLE_PATTERN, "")),
     features,
   };
 }

@@ -1,4 +1,3 @@
-import { Suspense } from "react";
 import { HomeContent } from "@/components/store/home-content";
 import { StoreShell } from "@/components/store/store-shell";
 import { getStorefront } from "@/lib/tebex";
@@ -8,9 +7,7 @@ export default async function HomePage() {
 
   return (
     <StoreShell data={data} activeSlug="home">
-      <Suspense fallback={null}>
-        <HomeContent />
-      </Suspense>
+      <HomeContent />
     </StoreShell>
   );
 }

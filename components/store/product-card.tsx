@@ -1,17 +1,30 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import Image from "next/image";
+import { type FormEvent, useMemo, useState } from "react";
 import { motion } from "motion/react";
 import { Check, Gift, Info, Minus, Plus, Tag, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useCart } from "@/components/store/cart-provider";
 import { RichHtml } from "@/components/store/rich-html";
+import { getMaxQuantity, getUserLimit } from "@/lib/cart";
 import type { Package } from "@/lib/types";
 import { getPackageDetails } from "@/lib/package-details";
-import { formatMoney } from "@/lib/utils";
+import { cn, formatMoney } from "@/lib/utils";
+import { isMinecraftUsername } from "@/lib/validation";
 import * as Dialog from "@/components/ui/dialog";
 
+const FALLBACK_PRODUCT_IMAGE = "/rank-vip.svg";
+
 export function ProductGrid({ products }: { products: Package[] }) {
+  if (products.length === 0) {
+    return (
+      <div className="rounded-[14px] bg-ink-900 p-8 text-center text-[#c7cad6]">
+        No packages are available in this category right now.
+      </div>
+    );
+  }
+
   return (
     <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
       {products.map((product, index) => (
@@ -24,16 +37,15 @@ export function ProductGrid({ products }: { products: Package[] }) {
 function ProductCard({ product, index }: { product: Package; index: number }) {
   const { addItem, cart, pending, removeItem, updateQuantity } = useCart();
   const existing = cart.packages.find((line) => line.id === product.id);
-  const userLimit = typeof product.user_limit === "number" ? product.user_limit : product.user_limit?.limit;
-  const maxQuantity = userLimit === 1 || product.disable_quantity ? 1 : 64;
+  const userLimit = getUserLimit(product.user_limit);
+  const maxQuantity = getMaxQuantity(product);
   const canManageQuantity = maxQuantity > 1;
-  const limitReached = userLimit === 1 && Boolean(existing);
   const details = useMemo(() => getPackageDetails(product.description), [product.description]);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [giftOpen, setGiftOpen] = useState(false);
   const [giftUsername, setGiftUsername] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const existingQuantity = useMemo(() => Math.min(existing?.in_basket.quantity ?? 1, maxQuantity), [existing?.in_basket.quantity, maxQuantity]);
+  const existingQuantity = Math.min(existing?.in_basket.quantity ?? 1, maxQuantity);
 
   async function runCardAction(action: () => Promise<void>) {
     setError(null);
@@ -42,6 +54,22 @@ function ProductCard({ product, index }: { product: Package; index: number }) {
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : "Cart request failed.");
     }
+  }
+
+  async function submitGift(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const recipient = giftUsername.trim();
+    if (!recipient) return;
+    if (!isMinecraftUsername(recipient)) {
+      setError("Enter a valid recipient Minecraft username.");
+      return;
+    }
+
+    await runCardAction(async () => {
+      await addItem(product.id, 1, recipient);
+      setGiftUsername("");
+      setGiftOpen(false);
+    });
   }
 
   return (
@@ -60,7 +88,13 @@ function ProductCard({ product, index }: { product: Package; index: number }) {
         <span className="absolute right-3 top-3 z-10 inline-flex h-9 w-9 items-center justify-center rounded-[10px] border-cyan-pop bg-[#123550] text-cyan-pop shadow-lg transition group-hover:bg-[#16425f]">
           <Info size={17} />
         </span>
-        <img src={product.image ?? "/rank-vip.svg"} alt={product.name} className="mx-auto h-[168px] w-full object-contain p-4" />
+        <Image
+          src={product.image || FALLBACK_PRODUCT_IMAGE}
+          alt={product.name}
+          width={400}
+          height={168}
+          className="mx-auto h-[168px] w-full object-contain p-4"
+        />
         <div className="border-t border-[#171b29] px-4 py-5">
           <h2 className="text-center font-black">{product.name}</h2>
         </div>
@@ -111,32 +145,34 @@ function ProductCard({ product, index }: { product: Package; index: number }) {
         <>
           <Button
             className="mt-4 w-full"
-            disabled={pending || limitReached}
+            disabled={pending}
             onClick={() => runCardAction(() => addItem(product.id, 1))}
           >
             <Plus size={16} className="fill-cyan-pop" />
-            {limitReached ? "Limit reached" : "Purchase"}
+            Purchase
           </Button>
-          <Button
-            variant="orange"
-            className="mt-3 w-full"
-            disabled={pending || limitReached}
-            onClick={() => {
-              setError(null);
-              setGiftOpen(true);
-            }}
-          >
-            <Gift size={16} />
-            Gift package
-          </Button>
+          {!product.disable_gifting ? (
+            <Button
+              variant="orange"
+              className="mt-3 w-full"
+              disabled={pending}
+              onClick={() => {
+                setError(null);
+                setGiftOpen(true);
+              }}
+            >
+              <Gift size={16} />
+              Gift package
+            </Button>
+          ) : null}
         </>
       )}
 
       {error ? <p className="mt-3 text-xs font-bold text-[#ff7777]">{error}</p> : null}
 
       <motion.div layout className="mt-4 space-y-2 text-[15px] text-[#c7cad6]">
-        {details.features.map((feature) => (
-          <div key={feature.text} className="flex gap-3">
+        {details.features.map((feature, featureIndex) => (
+          <div key={`${featureIndex}-${feature.text}`} className="flex gap-3">
             <span
               className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full ${
                 feature.positive ? "bg-[#42e95d] text-ink-950" : "bg-[#9ea2ad] text-ink-950"
@@ -155,7 +191,13 @@ function ProductCard({ product, index }: { product: Package; index: number }) {
           <Dialog.Content className="fixed left-1/2 top-1/2 z-50 grid max-h-[86vh] w-[calc(100vw-32px)] max-w-[900px] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-[14px] bg-ink-900 shadow-2xl md:grid-cols-[280px_1fr]">
             <div className="bg-ink-850 p-5">
               <div className="overflow-hidden rounded-[10px] bg-ink-800">
-                <img src={product.image ?? "/rank-vip.svg"} alt={product.name} className="mx-auto h-[190px] w-full object-contain p-4" />
+                <Image
+                  src={product.image || FALLBACK_PRODUCT_IMAGE}
+                  alt={product.name}
+                  width={400}
+                  height={190}
+                  className="mx-auto h-[190px] w-full object-contain p-4"
+                />
                 <div className="border-t border-[#171b29] px-4 py-4">
                   <h2 className="text-center font-black">{product.name}</h2>
                 </div>
@@ -176,7 +218,7 @@ function ProductCard({ product, index }: { product: Package; index: number }) {
                   </Button>
                 </Dialog.Close>
               </div>
-              <RichHtml html={details.details_html} className="rounded-[12px] bg-ink-800 p-4" />
+              <RichHtml html={details.detailsHtml} className="rounded-[12px] bg-ink-800 p-4" />
             </div>
           </Dialog.Content>
         </Dialog.Portal>
@@ -199,29 +241,33 @@ function ProductCard({ product, index }: { product: Package; index: number }) {
                 </Button>
               </Dialog.Close>
             </div>
-            <div className="mt-5 rounded-[14px] bg-ink-850 p-4">
+            <form className="mt-5 rounded-[14px] bg-ink-850 p-4" onSubmit={submitGift}>
+              <label htmlFor={`gift-username-${product.id}`} className="sr-only">
+                Recipient Minecraft username
+              </label>
               <input
+                id={`gift-username-${product.id}`}
+                type="text"
                 value={giftUsername}
                 onChange={(event) => setGiftUsername(event.target.value)}
                 placeholder="Recipient username"
+                autoComplete="off"
+                required
+                minLength={3}
+                maxLength={16}
+                pattern="[A-Za-z0-9_]{3,16}"
                 className="min-h-12 w-full rounded-xl border border-transparent bg-ink-800 px-4 font-black text-white outline-none ring-orange-pop/0 transition placeholder:text-[#9da3b4] focus:ring-2"
               />
               <Button
                 variant="orange"
                 className="mt-3 w-full"
+                type="submit"
                 disabled={pending || !giftUsername.trim()}
-                onClick={async () => {
-                  await runCardAction(async () => {
-                    await addItem(product.id, 1, giftUsername.trim());
-                    setGiftUsername("");
-                    setGiftOpen(false);
-                  });
-                }}
               >
                 <Gift size={16} />
                 Add gift
               </Button>
-            </div>
+            </form>
           </Dialog.Content>
         </Dialog.Portal>
       </Dialog.Root>
@@ -230,16 +276,18 @@ function ProductCard({ product, index }: { product: Package; index: number }) {
 }
 
 function PriceDisplay({ product, className = "" }: { product: Package; className?: string }) {
-  const onSale = product.discount > 0;
+  const originalPrice = getOriginalPrice(product.base_price, product.discount);
+  const onSale = originalPrice !== undefined;
+  const taxInclusivePrice = product.total_price > product.base_price ? product.total_price : undefined;
 
   return (
-    <div className={className}>
+    <div className={cn(className, "space-y-1")}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-baseline gap-2">
           <p className="font-black">{formatMoney(product.base_price, product.currency)}</p>
           {onSale ? (
             <span className="text-sm font-black text-[#9fa4b3] line-through">
-              {formatMoney(product.base_price, product.currency)}
+              {formatMoney(originalPrice, product.currency)}
             </span>
           ) : null}
         </div>
@@ -250,6 +298,18 @@ function PriceDisplay({ product, className = "" }: { product: Package; className
           </div>
         ) : null}
       </div>
+      {taxInclusivePrice !== undefined ? (
+        <p className="text-xs font-bold text-[#9fa4b3]">
+          {formatMoney(taxInclusivePrice, product.currency)} including sales tax / VAT
+        </p>
+      ) : null}
     </div>
   );
+}
+
+function getOriginalPrice(price: number, discount: number): number | undefined {
+  if (!Number.isFinite(discount) || discount <= 0 || discount >= 100) return undefined;
+
+  const originalPrice = price / (1 - discount / 100);
+  return Number.isFinite(originalPrice) && originalPrice > price ? Number(originalPrice.toFixed(2)) : undefined;
 }
