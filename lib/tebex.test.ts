@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { parseBasketResponse, TebexError } from "@/lib/tebex";
+import { createBasket, parseBasketResponse, TebexError } from "@/lib/tebex";
 
 function basketFixture(overrides: Record<string, unknown> = {}) {
   return {
@@ -98,5 +98,45 @@ describe("Tebex basket response parsing", () => {
         error.status === 502 &&
         error.message === "Tebex returned an invalid basket.",
     );
+  });
+});
+
+describe("Tebex basket creation", () => {
+  test("does not send an IP address through the public Headless API", async () => {
+    const originalFetch = globalThis.fetch;
+    const originalToken = process.env.TEBEX_PUBLIC_TOKEN;
+    const captured = { url: "", body: undefined as Record<string, unknown> | undefined };
+
+    process.env.TEBEX_PUBLIC_TOKEN = "test-public-token";
+    globalThis.fetch = (input, init) => {
+      captured.url =
+        input instanceof Request ? input.url : input instanceof URL ? input.href : input;
+      if (typeof init?.body !== "string") throw new Error("Expected a JSON request body.");
+      captured.body = JSON.parse(init.body) as Record<string, unknown>;
+      return Promise.resolve(
+        new Response(JSON.stringify({ data: basketFixture({ username: "Notch", links: [] }) }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    };
+
+    try {
+      const basket = await createBasket("Notch");
+
+      assert.equal(basket.ident, "basket-1");
+      assert.equal(
+        captured.url,
+        "https://headless.tebex.io/api/accounts/test-public-token/baskets",
+      );
+      const requestBody = captured.body;
+      assert.ok(requestBody);
+      assert.equal(requestBody.username, "Notch");
+      assert.equal("ip_address" in requestBody, false);
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalToken === undefined) delete process.env.TEBEX_PUBLIC_TOKEN;
+      else process.env.TEBEX_PUBLIC_TOKEN = originalToken;
+    }
   });
 });

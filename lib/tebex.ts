@@ -374,8 +374,10 @@ export async function getBasket(ident?: string | null): Promise<Basket> {
 export async function createBasket(username?: string): Promise<Basket> {
   const origin = getSiteOrigin();
   const normalizedUsername = normalizeString(username);
-  const ipAddress = getClientIpAddress();
 
+  // Keep this request on Tebex's public Headless API. Sending ip_address
+  // switches the request to an authenticated API path, which this integration
+  // cannot support with the public token.
   const result = await tebexFetch(
     accountPath("/baskets"),
     {
@@ -385,7 +387,6 @@ export async function createBasket(username?: string): Promise<Basket> {
         cancel_url: origin,
         complete_auto_redirect: true,
         ...(normalizedUsername ? { username: normalizedUsername } : {}),
-        ...(ipAddress ? { ip_address: ipAddress } : {}),
       }),
     },
     "no-store",
@@ -412,33 +413,6 @@ function getSiteOrigin(): string {
     return new URL(getRequest().url).origin;
   } catch {
     return "http://localhost:3000";
-  }
-}
-
-function isIpv4Address(value: string): boolean {
-  const octets = value.split(".");
-  return (
-    octets.length === 4 &&
-    octets.every((octet) => {
-      if (!/^\d+$/.test(octet)) return false;
-      const number = Number(octet);
-      return number >= 0 && number <= 255;
-    })
-  );
-}
-
-function getClientIpAddress(): string | undefined {
-  try {
-    const request = getRequest();
-    const forwardedFor = request.headers.get("x-forwarded-for");
-    const realIp = request.headers.get("x-real-ip");
-    const candidates = [...(forwardedFor?.split(",") ?? []), realIp ?? ""].map((value) =>
-      value.trim(),
-    );
-
-    return candidates.find(isIpv4Address);
-  } catch {
-    return undefined;
   }
 }
 
