@@ -67,6 +67,12 @@ describe("Tebex basket response parsing", () => {
     assert.equal(basket.id, "basket-id");
   });
 
+  test("accepts a null links value from a newly created basket", () => {
+    const basket = parseBasketResponse({ data: basketFixture({ links: null }) }, "create-basket");
+
+    assert.deepEqual(basket.links, {});
+  });
+
   test("rejects malformed responses with a server error", () => {
     assert.throws(
       () => parseBasketResponse({ data: { ident: "missing-required-fields" } }),

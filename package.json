@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite dev",
     "build": "vite build",
-    "start": "srvx --prod -s ../client dist/server/server.js",
+    "start": "node .output/server/index.mjs",
     "lint": "eslint .",
     "format": "prettier . --write",
     "format:check": "prettier . --check",

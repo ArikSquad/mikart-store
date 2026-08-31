@@ -251,7 +251,7 @@ function normalizeBasketPayload(payload: JsonObject) {
     ...(payload.coupons === undefined ? { coupons: [] } : {}),
     ...(payload.giftcards === undefined ? { giftcards: [] } : {}),
     ...(payload.creator_code === undefined ? { creator_code: null } : {}),
-    ...(payload.links === undefined ? { links: {} } : {}),
+    ...(payload.links === undefined || payload.links === null ? { links: {} } : {}),
   };
 
   return {
@@ -387,7 +387,8 @@ export async function createBasket(username?: string): Promise<Basket> {
 }
 
 function getSiteOrigin(): string {
-  const configuredUrl = process.env.PUBLIC_SITE_URL?.trim();
+  const configuredUrl =
+    process.env.PUBLIC_SITE_URL?.trim() || process.env.NEXT_PUBLIC_SITE_URL?.trim();
   if (configuredUrl) {
     try {
       const configuredOrigin = new URL(configuredUrl);
