@@ -73,6 +73,23 @@ describe("Tebex basket response parsing", () => {
     assert.deepEqual(basket.links, {});
   });
 
+  test("accepts Tebex's empty links array from a newly created basket", () => {
+    const basket = parseBasketResponse({ data: basketFixture({ links: [] }) }, "create-basket");
+
+    assert.deepEqual(basket.links, {});
+  });
+
+  test("rejects non-empty links arrays", () => {
+    assert.throws(
+      () =>
+        parseBasketResponse(
+          { data: basketFixture({ links: [{ checkout: "https://checkout.example/basket-1" }] }) },
+          "create-basket",
+        ),
+      (error: unknown) => error instanceof TebexError && error.status === 502,
+    );
+  });
+
   test("rejects malformed responses with a server error", () => {
     assert.throws(
       () => parseBasketResponse({ data: { ident: "missing-required-fields" } }),

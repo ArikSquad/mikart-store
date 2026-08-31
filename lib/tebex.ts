@@ -237,6 +237,14 @@ function normalizeBasketPackage(value: unknown): unknown {
   };
 }
 
+function normalizeBasketLinks(value: unknown): unknown {
+  if (value === undefined || value === null) return {};
+
+  // Tebex currently returns an empty array for links on a newly-created,
+  // empty basket. Once a package is added, it returns the documented object.
+  return Array.isArray(value) && value.length === 0 ? {} : value;
+}
+
 function normalizeBasketPayload(payload: JsonObject) {
   const normalized = {
     ...payload,
@@ -251,7 +259,7 @@ function normalizeBasketPayload(payload: JsonObject) {
     ...(payload.coupons === undefined ? { coupons: [] } : {}),
     ...(payload.giftcards === undefined ? { giftcards: [] } : {}),
     ...(payload.creator_code === undefined ? { creator_code: null } : {}),
-    ...(payload.links === undefined || payload.links === null ? { links: {} } : {}),
+    links: normalizeBasketLinks(payload.links),
   };
 
   return {
