@@ -1,13 +1,13 @@
 "use client";
 
-import Image from "next/image";
-import Link from "next/link";
+import { Link } from "@tanstack/react-router";
 import { LogIn, LogOut, Menu, PlayCircle, X } from "lucide-react";
-import { type FormEvent, useState } from "react";
+import { type SyntheticEvent, useState } from "react";
 import { CartButton } from "@/components/store/cart-drawer";
 import type { Category } from "@/lib/types";
 import { useCart } from "@/components/store/cart-provider";
 import { Button } from "@/components/ui/button";
+import { Image } from "@/components/ui/image";
 import * as Dialog from "@/components/ui/dialog";
 import { isMinecraftUsername, normalizeString } from "@/lib/validation";
 import { slugify } from "@/lib/utils";
@@ -25,7 +25,7 @@ export function Topbar({ categories }: { categories: Category[] }) {
     setAccountOpen(true);
   }
 
-  function connectAccount(event: FormEvent<HTMLFormElement>): void {
+  function connectAccount(event: SyntheticEvent<HTMLFormElement>): void {
     event.preventDefault();
     const nextUsername = normalizeString(draftUsername);
     if (!isMinecraftUsername(nextUsername)) {
@@ -93,7 +93,7 @@ export function Topbar({ categories }: { categories: Category[] }) {
       {open && (
         <nav id="mobile-navigation" className="mt-4 grid grid-cols-2 gap-2 lg:hidden">
           <Link
-            href="/"
+            to="/"
             onClick={() => setOpen(false)}
             className="rounded-[12px] bg-ink-850 px-4 py-3 text-sm font-black text-[#d9dbe3]"
           >
@@ -106,7 +106,8 @@ export function Topbar({ categories }: { categories: Category[] }) {
             return (
               <Link
                 key={category.id}
-                href={`/category/${slug}`}
+                to="/category/$slug"
+                params={{ slug }}
                 onClick={() => setOpen(false)}
                 className="rounded-[12px] bg-ink-850 px-4 py-3 text-sm font-black text-[#d9dbe3]"
               >

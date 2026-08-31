@@ -1,10 +1,10 @@
 "use client";
 
-import Image from "next/image";
-import { type FormEvent, useEffect, useState } from "react";
+import { type SyntheticEvent, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { Minus, Plus, ShoppingBasket, Sparkles, Tag, TicketPercent, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Image } from "@/components/ui/image";
 import { useCart } from "@/components/store/cart-provider";
 import { getMaxQuantity, type DiscountKind } from "@/lib/cart";
 import type { Basket } from "@/lib/types";
@@ -72,7 +72,7 @@ export function CartDrawer() {
     }
   }
 
-  async function submitDiscount(event: FormEvent<HTMLFormElement>): Promise<void> {
+  async function submitDiscount(event: SyntheticEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     const normalizedCode = code.trim();
     if (!normalizedCode) return;

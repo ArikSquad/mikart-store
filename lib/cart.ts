@@ -7,8 +7,8 @@ export const DISCOUNT_KINDS = ["coupon", "giftcard", "creator"] as const;
 export type DiscountKind = (typeof DISCOUNT_KINDS)[number];
 
 type QuantityLimitedItem = {
-  disable_quantity?: boolean;
-  user_limit?: UserLimit;
+  disable_quantity?: boolean | undefined;
+  user_limit?: UserLimit | undefined;
 };
 
 export function isDiscountKind(value: unknown): value is DiscountKind {
@@ -49,6 +49,5 @@ export function createEmptyBasket(): Basket {
     currency: EMPTY_BASKET_CURRENCY,
     packages: [],
     links: { checkout: "" },
-    custom: null,
   };
 }

@@ -3,6 +3,7 @@ import { describe, test } from "node:test";
 import { createEmptyBasket, getMaxQuantity, isDiscountKind } from "@/lib/cart";
 import { isBasket, isCheckoutResponse } from "@/lib/guards";
 import { getPackageDetails } from "@/lib/package-details";
+import { storefrontSchema } from "@/lib/schemas";
 import { parsePositiveInteger } from "@/lib/validation";
 
 describe("cart helpers", () => {
@@ -40,6 +41,40 @@ describe("API response guards", () => {
     assert.equal(isBasket({ ...createEmptyBasket(), creator_code: 42 }), false);
     assert.equal(isCheckoutResponse({ ident: "basket-1", auth_url: null }), true);
     assert.equal(isCheckoutResponse({ ident: 42 }), false);
+  });
+
+  test("validates and narrows storefront payloads", () => {
+    const result = storefrontSchema.safeParse({
+      categories: [{
+        id: 1,
+        name: "Ranks",
+        description: "Store ranks",
+        packages: [{
+          id: 10,
+          name: "VIP",
+          description: "VIP rank",
+          disable_gifting: false,
+          disable_quantity: true,
+          currency: "EUR",
+          base_price: 5,
+          total_price: 5,
+          discount: 0,
+          image: null,
+          ignored_remote_field: "not serialized",
+        }],
+        slug: "ranks",
+      }],
+      modules: [],
+      currency: "EUR",
+    });
+
+    assert.equal(result.success, true);
+    const category = result.data.categories[0];
+    assert.ok(category?.packages);
+    const product = category.packages[0];
+    assert.ok(product);
+    assert.equal("ignored_remote_field" in product, false);
+    assert.equal(storefrontSchema.safeParse({ categories: "invalid", modules: [] }).success, false);
   });
 });
 

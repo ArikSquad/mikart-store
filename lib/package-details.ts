@@ -9,8 +9,10 @@ const POSITIVE_FLAGS = new Set(["yes", "y", "true", "1", "check", "✓"]);
 export function getPackageDetails(description: string): PackageDetails {
   const table = description.match(TABLE_PATTERN)?.[0] ?? "";
   const features = Array.from(table.matchAll(TABLE_ROW_PATTERN))
-    .map(([rowHtml]) => Array.from(rowHtml.matchAll(TABLE_CELL_PATTERN)).map(([, cellHtml]) => stripHtml(cellHtml)))
-    .filter((cells) => cells.length >= 2)
+    .map(([rowHtml]) =>
+      Array.from(rowHtml.matchAll(TABLE_CELL_PATTERN)).map((match) => stripHtml(match[1] ?? "")),
+    )
+    .filter((cells): cells is [string, string, ...string[]] => cells.length >= 2)
     .map(([flag, ...rest]) => ({
       positive: POSITIVE_FLAGS.has(flag.toLowerCase()),
       text: rest.join(" ").trim(),

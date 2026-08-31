@@ -1,7 +1,6 @@
 "use client";
 
-import Image from "next/image";
-import Link from "next/link";
+import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import {
   BadgeDollarSign,
@@ -17,9 +16,11 @@ import {
   Users,
 } from "lucide-react";
 import { RichHtml } from "@/components/store/rich-html";
+import { Image } from "@/components/ui/image";
 import { isMinecraftServerStatus } from "@/lib/guards";
 import type { Category, MinecraftServerStatus, Module } from "@/lib/types";
 import { cn, formatMoney, slugify } from "@/lib/utils";
+import { getServerStatusServer } from "@/lib/server-functions";
 
 export function Sidebar({
   categories,
@@ -33,13 +34,13 @@ export function Sidebar({
   return (
     <aside className="hidden h-fit w-[392px] shrink-0 rounded-none bg-ink-900 px-6 py-8 lg:block lg:rounded-[18px] xl:px-8">
       <ServerButton />
-      <Link href="/" className="mx-auto mt-8 block h-[250px] w-[250px]" aria-label="MikArt home">
+      <Link to="/" className="mx-auto mt-8 block h-[250px] w-[250px]" aria-label="MikArt home">
         <Image src="/logo.png" alt="MikArt" width={250} height={250} className="h-full w-full rounded-md object-cover" />
       </Link>
 
       <nav className="mt-6 space-y-2">
         <Link
-          href="/"
+          to="/"
           className={cn(
             "flex h-[60px] items-center gap-5 rounded-[14px] px-6 text-[15px] font-black transition",
             activeSlug === "home"
@@ -61,7 +62,8 @@ export function Sidebar({
           return (
             <Link
               key={category.id}
-              href={slug === "home" ? "/" : `/category/${slug}`}
+              to="/category/$slug"
+              params={{ slug }}
               className={cn(
                 "flex h-[60px] items-center gap-5 rounded-[14px] px-6 text-[15px] font-black transition",
                 active
@@ -221,11 +223,7 @@ function SidebarModuleCard({ module }: { module: Module }) {
     );
   }
 
-  if (module.type === "payment_goal" || module.type === "community_goal") {
-    return <GoalModule module={module} />;
-  }
-
-  return null;
+  return <GoalModule module={module} />;
 }
 
 function GoalModule({ module }: { module: Extract<Module, { type: "payment_goal" | "community_goal" }> }) {
@@ -255,12 +253,9 @@ function ServerButton() {
 
     async function loadStatus(): Promise<void> {
       try {
-        const response = await fetch("/api/server-status", { cache: "no-store", signal: controller.signal });
-        if (!response.ok) throw new Error("Server status request failed");
-
-        const payload: unknown = await response.json();
+        const payload = await getServerStatusServer();
         if (!isMinecraftServerStatus(payload)) throw new Error("Invalid server status response");
-        setStatus(payload);
+        if (!controller.signal.aborted) setStatus(payload);
       } catch {
         if (!controller.signal.aborted) setStatus({ online: false, players: 0 });
       }

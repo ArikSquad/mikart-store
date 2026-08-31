@@ -12,9 +12,16 @@ import {
   type ReactNode,
 } from "react";
 import { createEmptyBasket, type DiscountKind } from "@/lib/cart";
-import { isBasket, isCheckoutResponse } from "@/lib/guards";
 import type { Basket, CheckoutResponse } from "@/lib/types";
-import { isMinecraftUsername, isRecord, normalizeString, sameMinecraftUsername } from "@/lib/validation";
+import {
+  addCartItemServer,
+  applyCartDiscountServer,
+  checkoutCartServer,
+  getCartServer,
+  removeCartItemServer,
+  updateCartItemServer,
+} from "@/lib/server-functions";
+import { isMinecraftUsername, normalizeString, sameMinecraftUsername } from "@/lib/validation";
 
 type CartContextValue = {
   cart: Basket;
@@ -34,60 +41,6 @@ const USERNAME_STORAGE_KEY = "minecraft_username";
 const USERNAME_CHANGE_EVENT = "mikart:username-change";
 
 const CartContext = createContext<CartContextValue | null>(null);
-
-type JsonParser<T> = (payload: unknown) => T;
-
-async function requestJson<T>(url: string, init: RequestInit, parse: JsonParser<T>): Promise<T> {
-  const response = await fetch(url, init);
-  const payload = await readResponseBody(response);
-
-  if (!response.ok) throw new Error(getApiErrorMessage(payload));
-  return parse(payload);
-}
-
-async function readResponseBody(response: Response): Promise<unknown> {
-  const text = await response.text();
-  if (!text) return null;
-
-  try {
-    const payload: unknown = JSON.parse(text);
-    return payload;
-  } catch {
-    return text;
-  }
-}
-
-function getApiErrorMessage(payload: unknown): string {
-  if (typeof payload === "string" && payload) return payload;
-  if (isRecordWithError(payload)) return payload.error;
-  return "Cart request failed.";
-}
-
-function isRecordWithError(value: unknown): value is { error: string } {
-  return isRecord(value) && typeof value.error === "string" && Boolean(value.error);
-}
-
-function postCart<T>(url: string, body: unknown, parse: JsonParser<T>): Promise<T> {
-  return requestJson(
-    url,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: body === undefined ? undefined : JSON.stringify(body),
-    },
-    parse
-  );
-}
-
-function expectBasket(payload: unknown): Basket {
-  if (!isBasket(payload)) throw new Error("The server returned an invalid basket.");
-  return payload;
-}
-
-function expectCheckoutResponse(payload: unknown): CheckoutResponse {
-  if (!isCheckoutResponse(payload)) throw new Error("The server returned an invalid checkout response.");
-  return payload;
-}
 
 function readStoredUsername(): string | null {
   if (typeof window === "undefined") return null;
@@ -123,13 +76,14 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const cartMutationVersion = useRef(0);
 
   useEffect(() => {
-    const controller = new AbortController();
+    let active = true;
     const requestVersion = cartRequestVersion.current;
     const mutationVersion = cartMutationVersion.current;
 
-    void requestJson("/api/cart", { cache: "no-store", signal: controller.signal }, expectBasket)
+    void getCartServer()
       .then((nextCart) => {
         if (
+          active &&
           requestVersion === cartRequestVersion.current &&
           mutationVersion === cartMutationVersion.current
         ) {
@@ -140,7 +94,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
         // An empty basket is already rendered while the request is pending.
       });
 
-    return () => controller.abort();
+    return () => {
+      active = false;
+    };
   }, []);
 
   const setUsername = useCallback((nextUsername: string | null) => {
@@ -199,37 +155,45 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   const addItem = useCallback(
     async (packageId: number, quantity = 1, giftUsername?: string): Promise<void> => {
-      await updateCart(() =>
-        postCart("/api/cart/add", { packageId, quantity, username, giftUsername }, expectBasket)
-      );
+      await updateCart(() => addCartItemServer({
+        data: {
+          packageId,
+          quantity,
+          username,
+          ...(giftUsername ? { giftUsername } : {}),
+        },
+      }));
     },
     [updateCart, username]
   );
 
   const updateQuantity = useCallback(
     async (packageId: number, quantity: number): Promise<void> => {
-      await updateCart(() => postCart("/api/cart/update", { packageId, quantity }, expectBasket));
+      await updateCart(() => updateCartItemServer({ data: { packageId, quantity } }));
     },
     [updateCart]
   );
 
   const removeItem = useCallback(
     async (packageId: number): Promise<void> => {
-      await updateCart(() => postCart("/api/cart/remove", { packageId }, expectBasket));
+      await updateCart(() => removeCartItemServer({ data: { packageId } }));
     },
     [updateCart]
   );
 
   const applyDiscount = useCallback(
     async (kind: DiscountKind, code: string): Promise<void> => {
-      await updateCart(() => postCart("/api/cart/discount", { kind, code }, expectBasket));
+      await updateCart(() => applyCartDiscountServer({ data: { kind, code } }));
     },
     [updateCart]
   );
 
   const checkout = useCallback(
     (): Promise<CheckoutResponse> =>
-      runWithPending(() => postCart("/api/cart/checkout", { username }, expectCheckoutResponse)),
+      runWithPending(() => {
+        if (!username) return Promise.reject(new Error("Connect your Minecraft account first."));
+        return checkoutCartServer({ data: { username } });
+      }),
     [runWithPending, username]
   );
 

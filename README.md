@@ -1,3 +1,3 @@
 # MikArt Store
 
-The MikArt Europe Minecraft store, built with Next.js, Tailwind CSS, and TypeScript.
+The MikArt Europe Minecraft storefront, built with TanStack Start, TanStack Router, React, Tailwind CSS, and TypeScript.

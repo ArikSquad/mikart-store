@@ -1,6 +1,4 @@
-import Link from "next/link";
-import { cacheLife } from "next/cache";
-import { type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { ExternalLink, GitBranch, Ruler } from "lucide-react";
 import { CartDrawer } from "@/components/store/cart-drawer";
 import { CartProvider } from "@/components/store/cart-provider";
@@ -34,10 +32,7 @@ export function StoreShell({
   );
 }
 
-async function Footer() {
-  "use cache";
-  cacheLife("days");
-
+function Footer() {
   const year = new Date().getFullYear();
 
   return (
@@ -49,19 +44,19 @@ async function Footer() {
         </p>
       </div>
       <div className="flex gap-3">
-        <Link className="grid h-16 w-16 place-items-center rounded-[14px] bg-ink-900 text-[#9da3b4]" href="https://github.com/ArikSquad/mikart-store" target="_blank" rel="noopener noreferrer" aria-label="GitHub">
+        <a className="grid h-16 w-16 place-items-center rounded-[14px] bg-ink-900 text-[#9da3b4]" href="https://github.com/ArikSquad/mikart-store" target="_blank" rel="noopener noreferrer" aria-label="GitHub">
           <GitBranch size={20} />
-        </Link>
-        <Link className="grid h-16 w-16 place-items-center rounded-[14px] bg-ink-900 text-[#9da3b4]" href="https://www.mikart.eu/docs/minecraft/rules" target="_blank" rel="noopener noreferrer" aria-label="Minecraft server rules">
+        </a>
+        <a className="grid h-16 w-16 place-items-center rounded-[14px] bg-ink-900 text-[#9da3b4]" href="https://www.mikart.eu/docs/minecraft/rules" target="_blank" rel="noopener noreferrer" aria-label="Minecraft server rules">
           <Ruler size={22} />
-        </Link>
-        <Link className="flex h-16 items-center gap-4 rounded-[14px] bg-ink-900 px-6" href="https://www.mikart.eu/" target="_blank" rel="noopener noreferrer">
+        </a>
+        <a className="flex h-16 items-center gap-4 rounded-[14px] bg-ink-900 px-6" href="https://www.mikart.eu/" target="_blank" rel="noopener noreferrer">
           <span className="text-[11px] font-black uppercase leading-none text-[#858b9d]">
             PRODUCT BY
             <strong className="block text-base normal-case text-white">ArikSquad</strong>
           </span>
           <ExternalLink size={18} className="text-[#a8adbb]" />
-        </Link>
+        </a>
       </div>
     </footer>
   );

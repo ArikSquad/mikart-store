@@ -1,14 +1,9 @@
-import { cacheLife } from "next/cache";
-import { cookies, headers } from "next/headers";
+import { getCookie, getRequest } from "@tanstack/react-start/server";
 import { createEmptyBasket, MAX_CART_QUANTITY, type DiscountKind } from "@/lib/cart";
-import { isBasket } from "@/lib/guards";
+import { basketSchema, categorySchema, moduleSchema } from "@/lib/schemas";
 import type {
-  ApiResponse,
-  AuthUrl,
   Basket,
-  Category,
   MinecraftServerStatus,
-  Module,
   Storefront,
 } from "@/lib/types";
 import { isRecord, normalizeString, parsePositiveInteger, sameMinecraftUsername } from "@/lib/validation";
@@ -18,6 +13,7 @@ const MINECRAFT_STATUS_API_BASE = "https://api.mcstatus.io/v2/status/java";
 const DEFAULT_SERVER_HOST = "play.mikart.eu";
 const TEBEX_REQUEST_TIMEOUT_MS = 10_000;
 const EXTERNAL_REQUEST_TIMEOUT_MS = 5_000;
+const STOREFRONT_CACHE_TTL_MS = 60_000;
 
 type TebexCacheMode = "force-cache" | "no-store";
 
@@ -39,6 +35,9 @@ const DISCOUNT_ENDPOINTS: Record<DiscountKind, string> = {
   creator: "creator-codes",
 };
 
+let storefrontCache: { data: Storefront; expiresAt: number } | null = null;
+let storefrontRequest: Promise<Storefront> | null = null;
+
 export class TebexError extends Error {
   constructor(
     public readonly status: number,
@@ -55,11 +54,11 @@ function getTebexToken(): string {
   return token;
 }
 
-async function tebexFetch<T>(
+async function tebexFetch(
   path: string,
   init?: RequestInit,
   cache: TebexCacheMode = "force-cache"
-): Promise<T> {
+): Promise<unknown> {
   const requestHeaders = new Headers(init?.headers);
   requestHeaders.set("Accept", "application/json");
   if (init?.body !== undefined && !requestHeaders.has("Content-Type")) {
@@ -70,7 +69,6 @@ async function tebexFetch<T>(
     ...init,
     cache,
     signal: init?.signal ?? AbortSignal.timeout(TEBEX_REQUEST_TIMEOUT_MS),
-    next: cache === "force-cache" ? { revalidate: 60 } : undefined,
     headers: requestHeaders,
   });
   const body = await readResponseBody(response);
@@ -80,7 +78,7 @@ async function tebexFetch<T>(
     throw new TebexError(response.status, `Tebex ${response.status}: ${details || "Request failed"}`);
   }
 
-  return body as T;
+  return body;
 }
 
 async function readResponseBody(response: Response): Promise<unknown> {
@@ -123,8 +121,8 @@ function accountBasketPath(ident: string, path = ""): string {
   return accountPath(basketPath(ident, path));
 }
 
-async function getCurrentBasketIdent(): Promise<string | null> {
-  const ident = (await cookies()).get("basket_ident")?.value;
+function getCurrentBasketIdent(): string | null {
+  const ident = getCookie("basket_ident");
   return normalizeString(ident) || null;
 }
 
@@ -137,25 +135,49 @@ function requireBasketIdent(basket: Basket): Basket {
 }
 
 function parseBasketResponse(body: unknown): Basket {
-  if (!isRecord(body) || !isBasket(body.data)) {
+  if (!isRecord(body)) {
     throw new TebexError(502, "Tebex returned an invalid basket.");
   }
-
-  return body.data;
+  const result = basketSchema.safeParse(body.data);
+  if (!result.success) throw new TebexError(502, "Tebex returned an invalid basket.");
+  return result.data;
 }
 
 export async function getStorefront(): Promise<Storefront> {
-  "use cache";
-  cacheLife("minutes");
+  if (storefrontCache && storefrontCache.expiresAt > Date.now()) {
+    return storefrontCache.data;
+  }
+  if (storefrontRequest) return storefrontRequest;
 
-  const [categories, sidebar] = await Promise.all([
-    tebexFetch<ApiResponse<Category[]>>(accountPath("/categories?includePackages=1")),
-    tebexFetch<ApiResponse<Module[]>>(accountPath("/sidebar")),
+  const request = loadStorefront()
+    .then((data) => {
+      storefrontCache = { data, expiresAt: Date.now() + STOREFRONT_CACHE_TTL_MS };
+      return data;
+    })
+    .finally(() => {
+      storefrontRequest = null;
+    });
+  storefrontRequest = request;
+  return request;
+}
+
+async function loadStorefront(): Promise<Storefront> {
+  const [categoriesBody, sidebarBody] = await Promise.all([
+    tebexFetch(accountPath("/categories?includePackages=1")),
+    tebexFetch(accountPath("/sidebar")),
   ]);
+
+  const categories = isRecord(categoriesBody)
+    ? categorySchema.array().safeParse(categoriesBody.data)
+    : null;
+  const modules = isRecord(sidebarBody) ? moduleSchema.array().safeParse(sidebarBody.data) : null;
+  if (!categories?.success || !modules?.success) {
+    throw new TebexError(502, "Tebex returned an invalid storefront.");
+  }
 
   return {
     categories: categories.data,
-    modules: sidebar.data,
+    modules: modules.data,
     currency: categories.data[0]?.packages?.[0]?.currency ?? "EUR",
   };
 }
@@ -165,7 +187,7 @@ export async function getBasket(ident?: string | null): Promise<Basket> {
   if (!normalizedIdent) return createEmptyBasket();
 
   try {
-    const result = await tebexFetch<unknown>(
+    const result = await tebexFetch(
       accountBasketPath(normalizedIdent),
       undefined,
       "no-store"
@@ -180,10 +202,10 @@ export async function getBasket(ident?: string | null): Promise<Basket> {
 }
 
 export async function createBasket(username?: string): Promise<Basket> {
-  const origin = await getSiteOrigin();
+  const origin = getSiteOrigin();
   const normalizedUsername = normalizeString(username);
 
-  const result = await tebexFetch<unknown>(
+  const result = await tebexFetch(
     accountPath("/baskets"),
     {
       method: "POST",
@@ -200,8 +222,8 @@ export async function createBasket(username?: string): Promise<Basket> {
   return requireBasketIdent(parseBasketResponse(result));
 }
 
-async function getSiteOrigin(): Promise<string> {
-  const configuredUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim();
+function getSiteOrigin(): string {
+  const configuredUrl = process.env.PUBLIC_SITE_URL?.trim();
   if (configuredUrl) {
     try {
       const configuredOrigin = new URL(configuredUrl);
@@ -213,21 +235,11 @@ async function getSiteOrigin(): Promise<string> {
     }
   }
 
-  const requestHeaders = await headers();
-  const host = getFirstHeaderValue(requestHeaders.get("x-forwarded-host")) ?? requestHeaders.get("host") ?? "localhost:3000";
-  const protocol = getFirstHeaderValue(requestHeaders.get("x-forwarded-proto")) ?? "http";
-  const requestOrigin = `${protocol === "https" ? "https" : "http"}://${host}`;
-
   try {
-    return new URL(requestOrigin).origin;
+    return new URL(getRequest().url).origin;
   } catch {
     return "http://localhost:3000";
   }
-}
-
-function getFirstHeaderValue(value: string | null): string | null {
-  const firstValue = value?.split(",", 1)[0]?.trim();
-  return firstValue || null;
 }
 
 async function getMinecraftUsernameId(username: string): Promise<string | null> {
@@ -293,7 +305,7 @@ async function postPackageToBasket(
   const initialPayload = await createPackageAddPayload(productId, quantity, giftUsername);
 
   try {
-    await tebexFetch<unknown>(
+    await tebexFetch(
       basketPath(basketIdent, "/packages"),
       {
         method: "POST",
@@ -310,7 +322,7 @@ async function postPackageToBasket(
 
     if (!canRetryWithUsername) throw error;
 
-    await tebexFetch<unknown>(
+    await tebexFetch(
       basketPath(basketIdent, "/packages"),
       {
         method: "POST",
@@ -330,7 +342,7 @@ export async function addPackage(
   validatePackageRequest(productId, quantity);
 
   const normalizedUsername = normalizeString(username);
-  const basketIdent = await getCurrentBasketIdent();
+  const basketIdent = getCurrentBasketIdent();
   const basket = basketIdent ? await getBasket(basketIdent) : await createBasket(normalizedUsername || undefined);
   const basketMatchesUsername =
     !basket.username || !normalizedUsername || sameMinecraftUsername(basket.username, normalizedUsername);
@@ -352,10 +364,10 @@ export async function addPackage(
 export async function updatePackageQuantity(productId: number, quantity: number): Promise<Basket> {
   validatePackageRequest(productId, quantity);
 
-  const ident = await getCurrentBasketIdent();
+  const ident = getCurrentBasketIdent();
   if (!ident) return createEmptyBasket();
 
-  await tebexFetch<unknown>(
+  await tebexFetch(
     basketPath(ident, `/packages/${encodeURIComponent(String(productId))}`),
     {
       method: "PUT",
@@ -371,10 +383,10 @@ export async function removePackage(productId: number): Promise<Basket> {
     throw new TebexError(400, "packageId must be a positive integer.");
   }
 
-  const ident = await getCurrentBasketIdent();
+  const ident = getCurrentBasketIdent();
   if (!ident) return createEmptyBasket();
 
-  await tebexFetch<unknown>(
+  await tebexFetch(
     basketPath(ident, "/packages/remove"),
     {
       method: "POST",
@@ -397,13 +409,13 @@ function createDiscountPayload(kind: DiscountKind, code: string): DiscountPayloa
 }
 
 export async function applyDiscount(kind: DiscountKind, code: string): Promise<Basket> {
-  const ident = await getCurrentBasketIdent();
+  const ident = getCurrentBasketIdent();
   if (!ident) throw new TebexError(400, "Your basket is empty.");
 
   const normalizedCode = normalizeString(code);
   if (!normalizedCode) throw new TebexError(400, "A discount code is required.");
 
-  await tebexFetch<unknown>(
+  await tebexFetch(
     accountBasketPath(ident, `/${DISCOUNT_ENDPOINTS[kind]}`),
     {
       method: "POST",
@@ -418,13 +430,13 @@ export async function getBasketAuth(ident: string): Promise<string | null> {
   const normalizedIdent = normalizeString(ident);
   if (!normalizedIdent) throw new TebexError(400, "A basket is required for checkout.");
 
-  const origin = await getSiteOrigin();
-  const auth = await tebexFetch<AuthUrl[]>(
+  const origin = getSiteOrigin();
+  const auth = await tebexFetch(
     accountBasketPath(normalizedIdent, `/auth?returnUrl=${encodeURIComponent(origin)}`),
     undefined,
     "no-store"
   );
-  const firstAuthUrl = Array.isArray(auth) ? auth[0] : null;
+  const firstAuthUrl: unknown = Array.isArray(auth) ? auth[0] : null;
   return isRecord(firstAuthUrl) && typeof firstAuthUrl.url === "string" ? firstAuthUrl.url : null;
 }
 
@@ -442,10 +454,11 @@ export async function getMinecraftServerStatus(
     const data: unknown = await response.json();
     const players = isRecord(data) && isRecord(data.players) ? data.players : null;
 
+    const maxPlayers = toOptionalNonNegativeNumber(players?.max);
     return {
       online: isRecord(data) && data.online === true,
       players: toNonNegativeNumber(players?.online),
-      max_players: toOptionalNonNegativeNumber(players?.max),
+      ...(maxPlayers === undefined ? {} : { max_players: maxPlayers }),
     };
   } catch {
     return { online: false, players: 0 };

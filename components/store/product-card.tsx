@@ -1,10 +1,10 @@
 "use client";
 
-import Image from "next/image";
-import { type FormEvent, useMemo, useState } from "react";
+import { type SyntheticEvent, useMemo, useState } from "react";
 import { motion } from "motion/react";
 import { Check, Gift, Info, Minus, Plus, Tag, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Image } from "@/components/ui/image";
 import { useCart } from "@/components/store/cart-provider";
 import { RichHtml } from "@/components/store/rich-html";
 import { getMaxQuantity, getUserLimit } from "@/lib/cart";
@@ -56,7 +56,7 @@ function ProductCard({ product, index }: { product: Package; index: number }) {
     }
   }
 
-  async function submitGift(event: FormEvent<HTMLFormElement>) {
+  async function submitGift(event: SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
     const recipient = giftUsername.trim();
     if (!recipient) return;

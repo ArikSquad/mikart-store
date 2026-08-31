@@ -1,8 +1,10 @@
-import Link from "next/link";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-export default function ThankYouPage() {
+export const Route = createFileRoute("/thank-you")({ component: ThankYouPage });
+
+function ThankYouPage() {
   return (
     <main className="grid min-h-screen place-items-center bg-ink-800 p-6 text-white">
       <section className="w-full max-w-[520px] rounded-[14px] bg-ink-900 p-8 text-center">
@@ -15,7 +17,7 @@ export default function ThankYouPage() {
           Your purchase has been submitted. Any in-game items will be delivered to the selected Minecraft account.
         </p>
         <Button asChild className="mt-8 w-full">
-          <Link href="/">Back to store</Link>
+          <Link to="/">Back to store</Link>
         </Button>
       </section>
     </main>
