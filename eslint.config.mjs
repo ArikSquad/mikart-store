@@ -5,7 +5,16 @@ import globals from "globals";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: [".next/**", "dist/**", "eslint.config.mjs", "src/routeTree.gen.ts"] },
+  {
+    ignores: [
+      ".next/**",
+      ".output/**",
+      ".vercel/**",
+      "dist/**",
+      "eslint.config.mjs",
+      "src/routeTree.gen.ts",
+    ],
+  },
   js.configs.recommended,
   ...tseslint.configs.strictTypeChecked,
   {
