@@ -42,7 +42,10 @@ const topCustomerModuleSchema = z.object({
   ...moduleBase,
   type: z.literal("top_customer"),
   data: z.object({
-    header: z.string(), username: z.string(), username_id: z.string(), total: finiteNumber.optional(),
+    header: z.string(),
+    username: z.string(),
+    username_id: z.string(),
+    total: finiteNumber.optional(),
   }),
 });
 const textboxModuleSchema = z.object({
@@ -55,13 +58,15 @@ const recentPaymentsModuleSchema = z.object({
   type: z.literal("recent_payments"),
   data: z.object({
     header: z.string(),
-    payments: z.array(z.object({
-      username: z.string(),
-      username_id: z.string(),
-      created_at: nullableString.optional(),
-      price: finiteNumber.nullable().optional(),
-      currency: nullableString.optional(),
-    })),
+    payments: z.array(
+      z.object({
+        username: z.string(),
+        username_id: z.string(),
+        created_at: nullableString.optional(),
+        price: finiteNumber.nullable().optional(),
+        currency: nullableString.optional(),
+      }),
+    ),
   }),
 });
 const featuredPackageModuleSchema = z.object({
@@ -94,10 +99,14 @@ const goalData = z.object({
   target: finiteNumber.nullable().optional(),
 });
 const paymentGoalModuleSchema = z.object({
-  ...moduleBase, type: z.literal("payment_goal"), data: goalData,
+  ...moduleBase,
+  type: z.literal("payment_goal"),
+  data: goalData,
 });
 const communityGoalModuleSchema = z.object({
-  ...moduleBase, type: z.literal("community_goal"), data: goalData,
+  ...moduleBase,
+  type: z.literal("community_goal"),
+  data: goalData,
 });
 
 export const moduleSchema = z.discriminatedUnion("type", [
@@ -156,5 +165,7 @@ export const basketSchema = z.object({
 });
 
 export const minecraftServerStatusSchema = z.object({
-  online: z.boolean(), players: nonNegativeNumber, max_players: nonNegativeNumber.optional(),
+  online: z.boolean(),
+  players: nonNegativeNumber,
+  max_players: nonNegativeNumber.optional(),
 });

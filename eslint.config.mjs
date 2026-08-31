@@ -35,7 +35,10 @@ export default tseslint.config(
       "@typescript-eslint/consistent-type-imports": "error",
       "@typescript-eslint/no-import-type-side-effects": "error",
       "@typescript-eslint/no-confusing-void-expression": "off",
-      "@typescript-eslint/no-misused-promises": ["error", { checksVoidReturn: { attributes: false } }],
+      "@typescript-eslint/no-misused-promises": [
+        "error",
+        { checksVoidReturn: { attributes: false } },
+      ],
       "@typescript-eslint/restrict-template-expressions": ["error", { allowNumber: true }],
       "react-refresh/only-export-components": "off",
     },

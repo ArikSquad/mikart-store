@@ -42,7 +42,9 @@ export function CartButton() {
       aria-label={`Open cart, ${label}`}
     >
       <ShoppingBasket size={17} strokeWidth={3} />
-      <span className="rounded-[9px] bg-[#493020] px-3 py-1 text-xs font-black uppercase">{label}</span>
+      <span className="rounded-[9px] bg-[#493020] px-3 py-1 text-xs font-black uppercase">
+        {label}
+      </span>
     </button>
   );
 }
@@ -146,7 +148,10 @@ export function CartDrawer() {
 
             <div className="space-y-3">
               {loadError ? (
-                <div role="alert" className="rounded-[16px] bg-[#342334] p-6 text-sm text-orange-pop">
+                <div
+                  role="alert"
+                  className="rounded-[16px] bg-[#342334] p-6 text-sm text-orange-pop"
+                >
                   <p>{loadError}</p>
                   <Button
                     type="button"
@@ -159,7 +164,9 @@ export function CartDrawer() {
                   </Button>
                 </div>
               ) : cart.packages.length === 0 ? (
-                <div className="rounded-[16px] bg-ink-850 p-6 text-sm text-[#b9bdca]">Your basket is empty.</div>
+                <div className="rounded-[16px] bg-ink-850 p-6 text-sm text-[#b9bdca]">
+                  Your basket is empty.
+                </div>
               ) : (
                 cart.packages.map((line) => {
                   const quantity = line.in_basket.quantity;
@@ -167,7 +174,11 @@ export function CartDrawer() {
                   const canManageQuantity = maxQuantity > 1;
 
                   return (
-                    <motion.div layout key={line.id} className="flex gap-3 rounded-[16px] bg-ink-850 p-3">
+                    <motion.div
+                      layout
+                      key={line.id}
+                      className="flex gap-3 rounded-[16px] bg-ink-850 p-3"
+                    >
                       <Image
                         src={line.image || FALLBACK_PRODUCT_IMAGE}
                         alt=""
@@ -186,7 +197,9 @@ export function CartDrawer() {
                               type="button"
                               className="grid h-9 w-9 place-items-center text-cyan-pop disabled:opacity-40"
                               disabled={pending || quantity <= 1}
-                              onClick={() => void runCartAction(() => updateQuantity(line.id, quantity - 1))}
+                              onClick={() =>
+                                void runCartAction(() => updateQuantity(line.id, quantity - 1))
+                              }
                               aria-label={`Decrease ${line.name} quantity`}
                             >
                               <Minus size={14} />
@@ -196,7 +209,9 @@ export function CartDrawer() {
                               type="button"
                               className="grid h-9 w-9 place-items-center text-cyan-pop disabled:opacity-40"
                               disabled={pending || quantity >= maxQuantity}
-                              onClick={() => void runCartAction(() => updateQuantity(line.id, quantity + 1))}
+                              onClick={() =>
+                                void runCartAction(() => updateQuantity(line.id, quantity + 1))
+                              }
                               aria-label={`Increase ${line.name} quantity`}
                             >
                               <Plus size={14} />
@@ -253,7 +268,11 @@ export function CartDrawer() {
                   required
                   className="min-w-0 flex-1 rounded-[12px] border border-[#373d53] bg-ink-900 px-3 text-sm font-bold outline-none ring-cyan-pop/0 transition focus:ring-2"
                 />
-                <Button type="submit" size="sm" disabled={pending || Boolean(loadError) || !code.trim()}>
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={pending || Boolean(loadError) || !code.trim()}
+                >
                   Apply
                 </Button>
               </div>
@@ -307,5 +326,7 @@ function AppliedCodes({ cart }: { cart: Basket }) {
     cart.creator_code,
   ].filter(Boolean);
 
-  return codes.length > 0 ? <p className="pt-2 text-xs font-bold text-cyan-pop">{codes.join(", ")}</p> : null;
+  return codes.length > 0 ? (
+    <p className="pt-2 text-xs font-bold text-cyan-pop">{codes.join(", ")}</p>
+  ) : null;
 }

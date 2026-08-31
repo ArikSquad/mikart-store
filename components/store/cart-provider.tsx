@@ -132,36 +132,40 @@ export function CartProvider({ children }: { children: ReactNode }) {
     };
   }, [loadCart]);
 
-  const setUsername = useCallback((nextUsername: string | null) => {
-    const normalizedUsername = normalizeString(nextUsername);
-    const nextUsernameValue = normalizedUsername && isMinecraftUsername(normalizedUsername) ? normalizedUsername : null;
-    const accountChanged =
-      username === null || nextUsernameValue === null
-        ? username !== nextUsernameValue
-        : !sameMinecraftUsername(username, nextUsernameValue);
+  const setUsername = useCallback(
+    (nextUsername: string | null) => {
+      const normalizedUsername = normalizeString(nextUsername);
+      const nextUsernameValue =
+        normalizedUsername && isMinecraftUsername(normalizedUsername) ? normalizedUsername : null;
+      const accountChanged =
+        username === null || nextUsernameValue === null
+          ? username !== nextUsernameValue
+          : !sameMinecraftUsername(username, nextUsernameValue);
 
-    if (accountChanged) {
-      cartRequestVersion.current += 1;
-      setCart(createEmptyBasket());
-      setLoadError(null);
-    }
-
-    try {
-      if (nextUsernameValue) {
-        window.localStorage.setItem(USERNAME_STORAGE_KEY, nextUsernameValue);
-      } else {
-        window.localStorage.removeItem(USERNAME_STORAGE_KEY);
+      if (accountChanged) {
+        cartRequestVersion.current += 1;
+        setCart(createEmptyBasket());
+        setLoadError(null);
       }
-    } catch {
-      // The cookie below still lets the server use the selected account.
-    }
 
-    const secure = window.location.protocol === "https:" ? "; Secure" : "";
-    document.cookie = `minecraft_username=${encodeURIComponent(nextUsernameValue ?? "")}; Path=/; Max-Age=${
-      nextUsernameValue ? 60 * 60 * 24 * 30 : 0
-    }; SameSite=Lax${secure}`;
-    window.dispatchEvent(new Event(USERNAME_CHANGE_EVENT));
-  }, [username]);
+      try {
+        if (nextUsernameValue) {
+          window.localStorage.setItem(USERNAME_STORAGE_KEY, nextUsernameValue);
+        } else {
+          window.localStorage.removeItem(USERNAME_STORAGE_KEY);
+        }
+      } catch {
+        // The cookie below still lets the server use the selected account.
+      }
+
+      const secure = window.location.protocol === "https:" ? "; Secure" : "";
+      document.cookie = `minecraft_username=${encodeURIComponent(nextUsernameValue ?? "")}; Path=/; Max-Age=${
+        nextUsernameValue ? 60 * 60 * 24 * 30 : 0
+      }; SameSite=Lax${secure}`;
+      window.dispatchEvent(new Event(USERNAME_CHANGE_EVENT));
+    },
+    [username],
+  );
 
   const updateCart = useCallback(
     async (work: () => Promise<Basket>): Promise<void> => {
@@ -177,42 +181,44 @@ export function CartProvider({ children }: { children: ReactNode }) {
         setLoadError(null);
       }
     },
-    [runWithPending]
+    [runWithPending],
   );
 
   const addItem = useCallback(
     async (packageId: number, quantity = 1, giftUsername?: string): Promise<void> => {
-      await updateCart(() => addCartItemServer({
-        data: {
-          packageId,
-          quantity,
-          username,
-          ...(giftUsername ? { giftUsername } : {}),
-        },
-      }));
+      await updateCart(() =>
+        addCartItemServer({
+          data: {
+            packageId,
+            quantity,
+            username,
+            ...(giftUsername ? { giftUsername } : {}),
+          },
+        }),
+      );
     },
-    [updateCart, username]
+    [updateCart, username],
   );
 
   const updateQuantity = useCallback(
     async (packageId: number, quantity: number): Promise<void> => {
       await updateCart(() => updateCartItemServer({ data: { packageId, quantity } }));
     },
-    [updateCart]
+    [updateCart],
   );
 
   const removeItem = useCallback(
     async (packageId: number): Promise<void> => {
       await updateCart(() => removeCartItemServer({ data: { packageId } }));
     },
-    [updateCart]
+    [updateCart],
   );
 
   const applyDiscount = useCallback(
     async (kind: DiscountKind, code: string): Promise<void> => {
       await updateCart(() => applyCartDiscountServer({ data: { kind, code } }));
     },
-    [updateCart]
+    [updateCart],
   );
 
   const checkout = useCallback(
@@ -221,7 +227,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         if (!username) return Promise.reject(new Error("Connect your Minecraft account first."));
         return checkoutCartServer({ data: { username } });
       }),
-    [runWithPending, username]
+    [runWithPending, username],
   );
 
   const value = useMemo<CartContextValue>(
@@ -253,7 +259,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
       setUsername,
       updateQuantity,
       username,
-    ]
+    ],
   );
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;

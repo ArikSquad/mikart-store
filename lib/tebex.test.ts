@@ -31,12 +31,14 @@ describe("Tebex basket response parsing", () => {
   test("normalizes the documented envelope and field variants", () => {
     const basket = parseBasketResponse({
       data: basketFixture({
-        packages: [{
-          id: 10,
-          name: "VIP",
-          description: "VIP rank",
-          in_basket: { quantity: 1, price: 5 },
-        }],
+        packages: [
+          {
+            id: 10,
+            name: "VIP",
+            description: "VIP rank",
+            in_basket: { quantity: 1, price: 5 },
+          },
+        ],
         coupons: [{ code: "SAVE10" }],
         giftcards: [{ card_number: 1234 }],
       }),

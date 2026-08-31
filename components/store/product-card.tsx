@@ -115,7 +115,9 @@ function ProductCard({ product, index }: { product: Package; index: number }) {
                 type="button"
                 className="grid h-12 w-8 place-items-center text-[#c9cdd9] disabled:opacity-40"
                 disabled={pending || existingQuantity <= 1}
-                onClick={() => runCardAction(() => updateQuantity(product.id, existingQuantity - 1))}
+                onClick={() =>
+                  runCardAction(() => updateQuantity(product.id, existingQuantity - 1))
+                }
                 aria-label="Decrease quantity"
               >
                 <Minus size={13} />
@@ -125,7 +127,9 @@ function ProductCard({ product, index }: { product: Package; index: number }) {
                 type="button"
                 className="grid h-12 w-8 place-items-center text-[#c9cdd9] disabled:opacity-40"
                 disabled={pending || existingQuantity >= maxQuantity}
-                onClick={() => runCardAction(() => updateQuantity(product.id, existingQuantity + 1))}
+                onClick={() =>
+                  runCardAction(() => updateQuantity(product.id, existingQuantity + 1))
+                }
                 aria-label="Increase quantity"
               >
                 <Plus size={13} />
@@ -169,7 +173,11 @@ function ProductCard({ product, index }: { product: Package; index: number }) {
         </>
       )}
 
-      {error ? <p role="alert" className="mt-3 text-xs font-bold text-[#ff7777]">{error}</p> : null}
+      {error ? (
+        <p role="alert" className="mt-3 text-xs font-bold text-[#ff7777]">
+          {error}
+        </p>
+      ) : null}
 
       <motion.div layout className="mt-4 space-y-2 text-[15px] text-[#c7cad6]">
         {details.features.map((feature, featureIndex) => (
@@ -279,7 +287,8 @@ function ProductCard({ product, index }: { product: Package; index: number }) {
 function PriceDisplay({ product, className = "" }: { product: Package; className?: string }) {
   const originalPrice = getOriginalPrice(product.base_price, product.discount);
   const onSale = originalPrice !== undefined;
-  const taxInclusivePrice = product.total_price > product.base_price ? product.total_price : undefined;
+  const taxInclusivePrice =
+    product.total_price > product.base_price ? product.total_price : undefined;
 
   return (
     <div className={cn(className, "space-y-1")}>
@@ -312,5 +321,7 @@ function getOriginalPrice(price: number, discount: number): number | undefined {
   if (!Number.isFinite(discount) || discount <= 0 || discount >= 100) return undefined;
 
   const originalPrice = price / (1 - discount / 100);
-  return Number.isFinite(originalPrice) && originalPrice > price ? Number(originalPrice.toFixed(2)) : undefined;
+  return Number.isFinite(originalPrice) && originalPrice > price
+    ? Number(originalPrice.toFixed(2))
+    : undefined;
 }

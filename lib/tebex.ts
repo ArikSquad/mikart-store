@@ -1,12 +1,10 @@
 import { getCookie, getRequest } from "@tanstack/react-start/server";
+import { z } from "zod";
 import { createEmptyBasket, MAX_CART_QUANTITY, type DiscountKind } from "@/lib/cart";
+import { parseJsonObject, type JsonObject } from "@/lib/json";
 import { basketSchema, categorySchema, moduleSchema } from "@/lib/schemas";
-import type {
-  Basket,
-  MinecraftServerStatus,
-  Storefront,
-} from "@/lib/types";
-import { isRecord, normalizeString, parsePositiveInteger, sameMinecraftUsername } from "@/lib/validation";
+import type { Basket, MinecraftServerStatus, Storefront } from "@/lib/types";
+import { normalizeString, parsePositiveInteger, sameMinecraftUsername } from "@/lib/validation";
 
 const TEBEX_API_BASE = "https://headless.tebex.io/api";
 const MINECRAFT_STATUS_API_BASE = "https://api.mcstatus.io/v2/status/java";
@@ -14,6 +12,29 @@ const DEFAULT_SERVER_HOST = "play.mikart.eu";
 const TEBEX_REQUEST_TIMEOUT_MS = 10_000;
 const EXTERNAL_REQUEST_TIMEOUT_MS = 5_000;
 const STOREFRONT_CACHE_TTL_MS = 60_000;
+
+const tebexErrorDetailsSchema = z.looseObject({
+  title: z.unknown().optional(),
+  detail: z.unknown().optional(),
+  message: z.unknown().optional(),
+  error: z.unknown().optional(),
+});
+const categoriesResponseSchema = z
+  .object({ data: categorySchema.array() })
+  .transform(({ data }) => data);
+const modulesResponseSchema = z
+  .object({ data: moduleSchema.array() })
+  .transform(({ data }) => data);
+const minecraftProfileSchema = z.object({ id: z.string().min(1) });
+const authUrlSchema = z.object({ url: z.string() });
+const minecraftStatusResponseSchema = z.looseObject({
+  online: z.boolean().catch(false),
+  players: z.unknown().optional(),
+});
+const minecraftPlayersSchema = z.looseObject({
+  online: z.unknown().optional(),
+  max: z.unknown().optional(),
+});
 
 type TebexCacheMode = "force-cache" | "no-store";
 
@@ -24,10 +45,7 @@ type PackageAddPayload = {
   target_username?: string;
 };
 
-type DiscountPayload =
-  | { coupon_code: string }
-  | { card_number: string }
-  | { creator_code: string };
+type DiscountPayload = { coupon_code: string } | { card_number: string } | { creator_code: string };
 
 const DISCOUNT_ENDPOINTS: Record<DiscountKind, string> = {
   coupon: "coupons",
@@ -41,7 +59,7 @@ let storefrontRequest: Promise<Storefront> | null = null;
 export class TebexError extends Error {
   constructor(
     public readonly status: number,
-    message: string
+    message: string,
   ) {
     super(message);
     this.name = "TebexError";
@@ -64,7 +82,7 @@ function sanitizeTebexPath(path: string): string {
 async function tebexFetch(
   path: string,
   init?: RequestInit,
-  cache: TebexCacheMode = "force-cache"
+  cache: TebexCacheMode = "force-cache",
 ): Promise<unknown> {
   const requestHeaders = new Headers(init?.headers);
   requestHeaders.set("Accept", "application/json");
@@ -108,7 +126,10 @@ async function tebexFetch(
         hasDetails: Boolean(details),
       });
     }
-    throw new TebexError(response.status, `Tebex ${response.status}: ${details || "Request failed"}`);
+    throw new TebexError(
+      response.status,
+      `Tebex ${response.status}: ${details || "Request failed"}`,
+    );
   }
 
   return body;
@@ -127,9 +148,10 @@ async function readResponseBody(response: Response): Promise<unknown> {
 }
 
 function getTebexErrorDetails(body: unknown): string {
-  if (!isRecord(body)) return "";
+  const result = tebexErrorDetailsSchema.safeParse(body);
+  if (!result.success) return "";
 
-  return [body.title, body.detail, body.message, body.error]
+  return [result.data.title, result.data.detail, result.data.message, result.data.error]
     .map((value) => {
       if (typeof value === "string" && value.trim()) return value.trim();
       return typeof value === "number" ? String(value) : null;
@@ -142,17 +164,19 @@ function isMissingBasket(error: unknown): error is TebexError {
   return error instanceof TebexError && error.status === 404;
 }
 
-function extractBasketPayload(body: unknown): Record<string, unknown> | null {
-  if (!isRecord(body)) return null;
+function extractBasketPayload(body: unknown): JsonObject | null {
+  const response = parseJsonObject(body);
+  if (!response) return null;
 
-  if ("data" in body) {
-    if (!isRecord(body.data)) return null;
+  if (Object.hasOwn(response, "data")) {
+    const data = parseJsonObject(response.data);
+    if (!data) return null;
 
-    const topLevelLinks = isRecord(body.links) ? body.links : null;
-    const nestedLinks = isRecord(body.data.links) ? body.data.links : null;
+    const topLevelLinks = parseJsonObject(response.links);
+    const nestedLinks = parseJsonObject(data.links);
 
     return {
-      ...body.data,
+      ...data,
       ...(topLevelLinks || nestedLinks
         ? {
             links: {
@@ -164,56 +188,56 @@ function extractBasketPayload(body: unknown): Record<string, unknown> | null {
     };
   }
 
-  return body;
+  return response;
 }
 
 function normalizeBasketCoupon(value: unknown): unknown {
-  if (!isRecord(value) || value.coupon_code !== undefined) return value;
-  if (typeof value.code !== "string") return value;
+  const coupon = parseJsonObject(value);
+  if (!coupon || coupon.coupon_code !== undefined) return value;
+  if (typeof coupon.code !== "string") return value;
 
   return {
-    ...value,
-    coupon_code: value.code,
+    ...coupon,
+    coupon_code: coupon.code,
   };
 }
 
 function normalizeBasketGiftCard(value: unknown): unknown {
-  if (!isRecord(value)) return value;
-  if (typeof value.card_number !== "number" || !Number.isFinite(value.card_number)) {
+  const giftCard = parseJsonObject(value);
+  if (!giftCard) return value;
+  if (typeof giftCard.card_number !== "number" || !Number.isFinite(giftCard.card_number)) {
     return value;
   }
 
   return {
-    ...value,
-    card_number: String(value.card_number),
+    ...giftCard,
+    card_number: String(giftCard.card_number),
   };
 }
 
 function normalizeBasketPackage(value: unknown): unknown {
-  if (!isRecord(value)) return value;
+  const packageData = parseJsonObject(value);
+  if (!packageData) return value;
 
   const normalized = {
-    ...value,
-    ...(value.image === undefined ? { image: null } : {}),
+    ...packageData,
+    ...(packageData.image === undefined ? { image: null } : {}),
   };
 
-  if (!isRecord(value.in_basket)) return normalized;
+  const inBasket = parseJsonObject(packageData.in_basket);
+  if (!inBasket) return normalized;
 
   return {
     ...normalized,
     in_basket: {
-      ...value.in_basket,
-      ...(value.in_basket.gift_username_id === undefined
-        ? { gift_username_id: null }
-        : {}),
-      ...(value.in_basket.gift_username === undefined
-        ? { gift_username: null }
-        : {}),
+      ...inBasket,
+      ...(inBasket.gift_username_id === undefined ? { gift_username_id: null } : {}),
+      ...(inBasket.gift_username === undefined ? { gift_username: null } : {}),
     },
   };
 }
 
-function normalizeBasketPayload(payload: Record<string, unknown>) {
+function normalizeBasketPayload(payload: JsonObject) {
   const normalized = {
     ...payload,
     ...(typeof payload.id === "number" && Number.isFinite(payload.id)
@@ -262,7 +286,7 @@ function getCurrentBasketIdent(): string | null {
 }
 
 function requireBasketIdent(basket: Basket): Basket {
-  if (!isRecord(basket) || typeof basket.ident !== "string" || !basket.ident) {
+  if (!basket.ident) {
     console.error("[tebex] Basket response did not include an identifier");
     throw new TebexError(502, "Tebex returned a basket without an identifier.");
   }
@@ -272,9 +296,7 @@ function requireBasketIdent(basket: Basket): Basket {
 
 export function parseBasketResponse(body: unknown, endpoint = "basket"): Basket {
   const payload = extractBasketPayload(body);
-  const result = basketSchema.safeParse(
-    payload ? normalizeBasketPayload(payload) : payload,
-  );
+  const result = basketSchema.safeParse(payload ? normalizeBasketPayload(payload) : payload);
   if (!result.success) {
     console.error("[tebex] Invalid basket response", {
       endpoint,
@@ -313,11 +335,9 @@ async function loadStorefront(): Promise<Storefront> {
     tebexFetch(accountPath("/sidebar")),
   ]);
 
-  const categories = isRecord(categoriesBody)
-    ? categorySchema.array().safeParse(categoriesBody.data)
-    : null;
-  const modules = isRecord(sidebarBody) ? moduleSchema.array().safeParse(sidebarBody.data) : null;
-  if (!categories?.success || !modules?.success) {
+  const categories = categoriesResponseSchema.safeParse(categoriesBody);
+  const modules = modulesResponseSchema.safeParse(sidebarBody);
+  if (!categories.success || !modules.success) {
     throw new TebexError(502, "Tebex returned an invalid storefront.");
   }
 
@@ -333,11 +353,7 @@ export async function getBasket(ident?: string | null): Promise<Basket> {
   if (!normalizedIdent) return createEmptyBasket();
 
   try {
-    const result = await tebexFetch(
-      accountBasketPath(normalizedIdent),
-      undefined,
-      "no-store"
-    );
+    const result = await tebexFetch(accountBasketPath(normalizedIdent), undefined, "no-store");
     const basket = parseBasketResponse(result, "get-basket");
 
     return basket.complete ? createEmptyBasket() : basket;
@@ -364,7 +380,7 @@ export async function createBasket(username?: string): Promise<Basket> {
         ...(ipAddress ? { ip_address: ipAddress } : {}),
       }),
     },
-    "no-store"
+    "no-store",
   );
 
   return requireBasketIdent(parseBasketResponse(result, "create-basket"));
@@ -407,10 +423,9 @@ function getClientIpAddress(): string | undefined {
     const request = getRequest();
     const forwardedFor = request.headers.get("x-forwarded-for");
     const realIp = request.headers.get("x-real-ip");
-    const candidates = [
-      ...(forwardedFor?.split(",") ?? []),
-      realIp ?? "",
-    ].map((value) => value.trim());
+    const candidates = [...(forwardedFor?.split(",") ?? []), realIp ?? ""].map((value) =>
+      value.trim(),
+    );
 
     return candidates.find(isIpv4Address);
   } catch {
@@ -426,13 +441,12 @@ async function getMinecraftUsernameId(username: string): Promise<string | null> 
         cache: "no-store",
         signal: AbortSignal.timeout(EXTERNAL_REQUEST_TIMEOUT_MS),
         headers: { Accept: "application/json" },
-      }
+      },
     );
     if (!response.ok) return null;
 
-    const profile: unknown = await response.json().catch(() => null);
-    if (!isRecord(profile) || typeof profile.id !== "string" || !profile.id) return null;
-    return profile.id;
+    const profile = minecraftProfileSchema.safeParse(await response.json().catch(() => null));
+    return profile.success ? profile.data.id : null;
   } catch {
     return null;
   }
@@ -452,7 +466,7 @@ async function createPackageAddPayload(
   productId: number,
   quantity: number,
   giftUsername?: string,
-  useUsernameFallback = false
+  useUsernameFallback = false,
 ): Promise<PackageAddPayload> {
   const payload: PackageAddPayload = {
     package_id: String(productId),
@@ -462,7 +476,9 @@ async function createPackageAddPayload(
   const normalizedGiftUsername = normalizeString(giftUsername);
   if (!normalizedGiftUsername) return payload;
 
-  const targetUsernameId = useUsernameFallback ? null : await getMinecraftUsernameId(normalizedGiftUsername);
+  const targetUsernameId = useUsernameFallback
+    ? null
+    : await getMinecraftUsernameId(normalizedGiftUsername);
   if (targetUsernameId) {
     payload.target_username_id = targetUsernameId;
   } else {
@@ -476,7 +492,7 @@ async function postPackageToBasket(
   basketIdent: string,
   productId: number,
   quantity: number,
-  giftUsername?: string
+  giftUsername?: string,
 ): Promise<void> {
   const initialPayload = await createPackageAddPayload(productId, quantity, giftUsername);
 
@@ -487,7 +503,7 @@ async function postPackageToBasket(
         method: "POST",
         body: JSON.stringify(initialPayload),
       },
-      "no-store"
+      "no-store",
     );
   } catch (error) {
     const canRetryWithUsername =
@@ -502,9 +518,11 @@ async function postPackageToBasket(
       basketPath(basketIdent, "/packages"),
       {
         method: "POST",
-        body: JSON.stringify(await createPackageAddPayload(productId, quantity, giftUsername, true)),
+        body: JSON.stringify(
+          await createPackageAddPayload(productId, quantity, giftUsername, true),
+        ),
       },
-      "no-store"
+      "no-store",
     );
   }
 }
@@ -513,17 +531,23 @@ export async function addPackage(
   productId: number,
   quantity: number,
   username?: string,
-  giftUsername?: string
+  giftUsername?: string,
 ): Promise<Basket> {
   validatePackageRequest(productId, quantity);
 
   const normalizedUsername = normalizeString(username);
   const basketIdent = getCurrentBasketIdent();
-  const basket = basketIdent ? await getBasket(basketIdent) : await createBasket(normalizedUsername || undefined);
+  const basket = basketIdent
+    ? await getBasket(basketIdent)
+    : await createBasket(normalizedUsername || undefined);
   const basketMatchesUsername =
-    !basket.username || !normalizedUsername || sameMinecraftUsername(basket.username, normalizedUsername);
+    !basket.username ||
+    !normalizedUsername ||
+    sameMinecraftUsername(basket.username, normalizedUsername);
   const activeBasket =
-    basket.ident && basketMatchesUsername ? basket : await createBasket(normalizedUsername || undefined);
+    basket.ident && basketMatchesUsername
+      ? basket
+      : await createBasket(normalizedUsername || undefined);
 
   try {
     await postPackageToBasket(activeBasket.ident, productId, quantity, giftUsername);
@@ -549,7 +573,7 @@ export async function updatePackageQuantity(productId: number, quantity: number)
       method: "PUT",
       body: JSON.stringify({ quantity }),
     },
-    "no-store"
+    "no-store",
   );
   return await getBasket(ident);
 }
@@ -568,7 +592,7 @@ export async function removePackage(productId: number): Promise<Basket> {
       method: "POST",
       body: JSON.stringify({ package_id: String(productId) }),
     },
-    "no-store"
+    "no-store",
   );
   return await getBasket(ident);
 }
@@ -597,7 +621,7 @@ export async function applyDiscount(kind: DiscountKind, code: string): Promise<B
       method: "POST",
       body: JSON.stringify(createDiscountPayload(kind, normalizedCode)),
     },
-    "no-store"
+    "no-store",
   );
   return await getBasket(ident);
 }
@@ -610,14 +634,14 @@ export async function getBasketAuth(ident: string): Promise<string | null> {
   const auth = await tebexFetch(
     accountBasketPath(normalizedIdent, `/auth?returnUrl=${encodeURIComponent(origin)}`),
     undefined,
-    "no-store"
+    "no-store",
   );
-  const firstAuthUrl: unknown = Array.isArray(auth) ? auth[0] : null;
-  return isRecord(firstAuthUrl) && typeof firstAuthUrl.url === "string" ? firstAuthUrl.url : null;
+  const firstAuthUrl = authUrlSchema.safeParse(Array.isArray(auth) ? auth[0] : null);
+  return firstAuthUrl.success ? firstAuthUrl.data.url : null;
 }
 
 export async function getMinecraftServerStatus(
-  hostname = DEFAULT_SERVER_HOST
+  hostname = DEFAULT_SERVER_HOST,
 ): Promise<MinecraftServerStatus> {
   try {
     const response = await fetch(`${MINECRAFT_STATUS_API_BASE}/${encodeURIComponent(hostname)}`, {
@@ -627,12 +651,15 @@ export async function getMinecraftServerStatus(
     });
     if (!response.ok) throw new Error("Server status request failed");
 
-    const data: unknown = await response.json();
-    const players = isRecord(data) && isRecord(data.players) ? data.players : null;
+    const data = minecraftStatusResponseSchema.safeParse(await response.json());
+    if (!data.success) throw new Error("Invalid server status response");
+
+    const playersResult = minecraftPlayersSchema.safeParse(data.data.players);
+    const players = playersResult.success ? playersResult.data : null;
 
     const maxPlayers = toOptionalNonNegativeNumber(players?.max);
     return {
-      online: isRecord(data) && data.online === true,
+      online: data.data.online,
       players: toNonNegativeNumber(players?.online),
       ...(maxPlayers === undefined ? {} : { max_players: maxPlayers }),
     };

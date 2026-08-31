@@ -35,7 +35,13 @@ export function Sidebar({
     <aside className="hidden h-fit w-[392px] shrink-0 rounded-none bg-ink-900 px-6 py-8 lg:block lg:rounded-[18px] xl:px-8">
       <ServerButton />
       <Link to="/" className="mx-auto mt-8 block h-[250px] w-[250px]" aria-label="MikArt home">
-        <Image src="/logo.png" alt="MikArt" width={250} height={250} className="h-full w-full rounded-md object-cover" />
+        <Image
+          src="/logo.png"
+          alt="MikArt"
+          width={250}
+          height={250}
+          className="h-full w-full rounded-md object-cover"
+        />
       </Link>
 
       <nav className="mt-6 space-y-2">
@@ -45,7 +51,7 @@ export function Sidebar({
             "flex h-[60px] items-center gap-5 rounded-[14px] px-6 text-[15px] font-black transition",
             activeSlug === "home"
               ? "border-2 border-cyan-pop bg-[#123550] text-cyan-pop"
-              : "text-[#d9dbe3] hover:bg-ink-850 hover:text-white"
+              : "text-[#d9dbe3] hover:bg-ink-850 hover:text-white",
           )}
         >
           <Home
@@ -68,10 +74,14 @@ export function Sidebar({
                 "flex h-[60px] items-center gap-5 rounded-[14px] px-6 text-[15px] font-black transition",
                 active
                   ? "border-2 border-cyan-pop bg-[#123550] text-cyan-pop"
-                  : "text-[#d9dbe3] hover:bg-ink-850 hover:text-white"
+                  : "text-[#d9dbe3] hover:bg-ink-850 hover:text-white",
               )}
             >
-              <Icon size={19} className={active ? "fill-cyan-pop/25" : "text-[#9fa4b3]"} strokeWidth={3} />
+              <Icon
+                size={19}
+                className={active ? "fill-cyan-pop/25" : "text-[#9fa4b3]"}
+                strokeWidth={3}
+              />
               {category.name}
             </Link>
           );
@@ -108,7 +118,9 @@ function SidebarModuleCard({ module }: { module: Module }) {
           <div className="min-w-0">
             <p className="truncate text-lg font-black">{module.data.username}</p>
             <p className="text-[15px] text-[#c3c6d2]">
-              {module.data.total ? `Paid ${module.data.total} this year.` : "Paid the most this year."}
+              {module.data.total
+                ? `Paid ${module.data.total} this year.`
+                : "Paid the most this year."}
             </p>
           </div>
         </div>
@@ -147,7 +159,11 @@ function SidebarModuleCard({ module }: { module: Module }) {
                 />
                 <div className="min-w-0">
                   <p className="truncate font-black">{payment.username}</p>
-                  {payment.price ? <p className="text-xs text-[#aeb3c4]">{formatMoney(payment.price, payment.currency ?? undefined)}</p> : null}
+                  {payment.price ? (
+                    <p className="text-xs text-[#aeb3c4]">
+                      {formatMoney(payment.price, payment.currency ?? undefined)}
+                    </p>
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -187,7 +203,9 @@ function SidebarModuleCard({ module }: { module: Module }) {
           />
         ) : null}
         <p className="font-black">{module.data.package.name}</p>
-        <p className="mt-1 text-sm text-[#c3c6d2]">{formatMoney(module.data.package.total_price, module.data.package.currency)}</p>
+        <p className="mt-1 text-sm text-[#c3c6d2]">
+          {formatMoney(module.data.package.total_price, module.data.package.currency)}
+        </p>
       </section>
     );
   }
@@ -199,7 +217,12 @@ function SidebarModuleCard({ module }: { module: Module }) {
           <Server size={22} />
           {module.data.header}
         </h2>
-        <p className={cn("mt-3 font-black", module.data.online ? "text-[#42e95d]" : "text-[#ff4545]")}>
+        <p
+          className={cn(
+            "mt-3 font-black",
+            module.data.online ? "text-[#42e95d]" : "text-[#ff4545]",
+          )}
+        >
           {module.data.online ? "Online" : "Offline"}
         </p>
         {module.data.players ? (
@@ -226,7 +249,11 @@ function SidebarModuleCard({ module }: { module: Module }) {
   return <GoalModule module={module} />;
 }
 
-function GoalModule({ module }: { module: Extract<Module, { type: "payment_goal" | "community_goal" }> }) {
+function GoalModule({
+  module,
+}: {
+  module: Extract<Module, { type: "payment_goal" | "community_goal" }>;
+}) {
   const percent = Number.isFinite(module.data.percentage)
     ? Math.min(100, Math.max(0, module.data.percentage))
     : 0;
@@ -269,7 +296,8 @@ function ServerButton() {
     };
   }, []);
 
-  const serverLabel = status === null ? "Checking..." : status.online ? `${status.players} Online` : "Offline";
+  const serverLabel =
+    status === null ? "Checking..." : status.online ? `${status.players} Online` : "Offline";
 
   return (
     <a

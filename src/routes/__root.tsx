@@ -1,13 +1,7 @@
 import "@fontsource-variable/geist";
 import "@fontsource-variable/geist-mono";
 import type { ReactNode } from "react";
-import {
-  createRootRoute,
-  HeadContent,
-  Link,
-  Outlet,
-  Scripts,
-} from "@tanstack/react-router";
+import { createRootRoute, HeadContent, Link, Outlet, Scripts } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import styles from "@/app/globals.css?url";
 

@@ -45,25 +45,29 @@ describe("API response guards", () => {
 
   test("validates and narrows storefront payloads", () => {
     const result = storefrontSchema.safeParse({
-      categories: [{
-        id: 1,
-        name: "Ranks",
-        description: "Store ranks",
-        packages: [{
-          id: 10,
-          name: "VIP",
-          description: "VIP rank",
-          disable_gifting: false,
-          disable_quantity: true,
-          currency: "EUR",
-          base_price: 5,
-          total_price: 5,
-          discount: 0,
-          image: null,
-          ignored_remote_field: "not serialized",
-        }],
-        slug: "ranks",
-      }],
+      categories: [
+        {
+          id: 1,
+          name: "Ranks",
+          description: "Store ranks",
+          packages: [
+            {
+              id: 10,
+              name: "VIP",
+              description: "VIP rank",
+              disable_gifting: false,
+              disable_quantity: true,
+              currency: "EUR",
+              base_price: 5,
+              total_price: 5,
+              discount: 0,
+              image: null,
+              ignored_remote_field: "not serialized",
+            },
+          ],
+          slug: "ranks",
+        },
+      ],
       modules: [],
       currency: "EUR",
     });
@@ -81,7 +85,7 @@ describe("API response guards", () => {
 describe("package details", () => {
   test("extracts feature rows and sanitizes the remaining description", () => {
     const details = getPackageDetails(
-      '<table><tr><td>yes</td><td>Fast commands</td></tr><tr><td>no</td><td>Bad behavior</td></tr></table><p>More <strong>details</strong>.</p><script>alert(1)</script>'
+      "<table><tr><td>yes</td><td>Fast commands</td></tr><tr><td>no</td><td>Bad behavior</td></tr></table><p>More <strong>details</strong>.</p><script>alert(1)</script>",
     );
 
     assert.deepEqual(details.features, [

@@ -14,7 +14,8 @@ function ThankYouPage() {
         <p className="mt-6 text-sm font-black uppercase text-cyan-pop">Payment complete</p>
         <h1 className="mt-2 text-3xl font-black">Thank you for your purchase!</h1>
         <p className="mt-4 leading-7 text-[#c7cad6]">
-          Your purchase has been submitted. Any in-game items will be delivered to the selected Minecraft account.
+          Your purchase has been submitted. Any in-game items will be delivered to the selected
+          Minecraft account.
         </p>
         <Button asChild className="mt-8 w-full">
           <Link to="/">Back to store</Link>

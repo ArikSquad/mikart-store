@@ -44,13 +44,30 @@ function Footer() {
         </p>
       </div>
       <div className="flex gap-3">
-        <a className="grid h-16 w-16 place-items-center rounded-[14px] bg-ink-900 text-[#9da3b4]" href="https://github.com/ArikSquad/mikart-store" target="_blank" rel="noopener noreferrer" aria-label="GitHub">
+        <a
+          className="grid h-16 w-16 place-items-center rounded-[14px] bg-ink-900 text-[#9da3b4]"
+          href="https://github.com/ArikSquad/mikart-store"
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label="GitHub"
+        >
           <GitBranch size={20} />
         </a>
-        <a className="grid h-16 w-16 place-items-center rounded-[14px] bg-ink-900 text-[#9da3b4]" href="https://www.mikart.eu/docs/minecraft/rules" target="_blank" rel="noopener noreferrer" aria-label="Minecraft server rules">
+        <a
+          className="grid h-16 w-16 place-items-center rounded-[14px] bg-ink-900 text-[#9da3b4]"
+          href="https://www.mikart.eu/docs/minecraft/rules"
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label="Minecraft server rules"
+        >
           <Ruler size={22} />
         </a>
-        <a className="flex h-16 items-center gap-4 rounded-[14px] bg-ink-900 px-6" href="https://www.mikart.eu/" target="_blank" rel="noopener noreferrer">
+        <a
+          className="flex h-16 items-center gap-4 rounded-[14px] bg-ink-900 px-6"
+          href="https://www.mikart.eu/"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
           <span className="text-[11px] font-black uppercase leading-none text-[#858b9d]">
             PRODUCT BY
             <strong className="block text-base normal-case text-white">ArikSquad</strong>

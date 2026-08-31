@@ -73,12 +73,7 @@ export const addCartItemServer = createServerFn({ method: "POST" })
     const username = data.username ?? normalizeString(getCookie(USERNAME_COOKIE));
     if (!isMinecraftUsername(username)) throw new Error("Connect your Minecraft account first.");
 
-    const cart = await addPackage(
-      data.packageId,
-      data.quantity,
-      username,
-      data.giftUsername,
-    );
+    const cart = await addPackage(data.packageId, data.quantity, username, data.giftUsername);
     if (cart.ident) {
       setCookie(BASKET_COOKIE, cart.ident, cookieOptions(60 * 60 * 24, true));
     }

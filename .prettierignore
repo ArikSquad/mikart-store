@@ -1,0 +1,7 @@
+node_modules
+.next
+.output
+.vercel
+dist
+public
+src/routeTree.gen.ts

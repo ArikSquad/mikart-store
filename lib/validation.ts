@@ -1,9 +1,7 @@
+import { parseJsonObject } from "@/lib/json";
+
 const MINECRAFT_USERNAME_PATTERN = /^[A-Za-z0-9_]{3,16}$/;
 const POSITIVE_INTEGER_PATTERN = /^\d+$/;
-
-export function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 export function normalizeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -17,7 +15,10 @@ export function sameMinecraftUsername(first: string, second: string): boolean {
   return first.toLowerCase() === second.toLowerCase();
 }
 
-export function parsePositiveInteger(value: unknown, maximum = Number.MAX_SAFE_INTEGER): number | null {
+export function parsePositiveInteger(
+  value: unknown,
+  maximum = Number.MAX_SAFE_INTEGER,
+): number | null {
   const stringValue = typeof value === "string" ? value.trim() : "";
   const number =
     typeof value === "number"
@@ -32,7 +33,7 @@ export function parsePositiveInteger(value: unknown, maximum = Number.MAX_SAFE_I
 export async function readJsonObject(request: Request): Promise<Record<string, unknown> | null> {
   try {
     const body: unknown = await request.json();
-    return isRecord(body) ? body : null;
+    return parseJsonObject(body);
   } catch {
     return null;
   }
