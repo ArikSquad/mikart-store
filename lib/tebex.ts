@@ -50,8 +50,15 @@ export class TebexError extends Error {
 
 function getTebexToken(): string {
   const token = process.env.TEBEX_PUBLIC_TOKEN?.trim();
-  if (!token) throw new Error("TEBEX_PUBLIC_TOKEN is not configured");
+  if (!token) {
+    console.error("[tebex] Missing TEBEX_PUBLIC_TOKEN");
+    throw new TebexError(500, "The store is not configured for payments.");
+  }
   return token;
+}
+
+function sanitizeTebexPath(path: string): string {
+  return path.replace(/^\/accounts\/[^/]+/, "/accounts/:token");
 }
 
 async function tebexFetch(
@@ -65,16 +72,42 @@ async function tebexFetch(
     requestHeaders.set("Content-Type", "application/json");
   }
 
-  const response = await fetch(`${TEBEX_API_BASE}${path}`, {
-    ...init,
-    cache,
-    signal: init?.signal ?? AbortSignal.timeout(TEBEX_REQUEST_TIMEOUT_MS),
-    headers: requestHeaders,
-  });
+  const method = (init?.method ?? "GET").toUpperCase();
+  let response: Response;
+
+  try {
+    response = await fetch(`${TEBEX_API_BASE}${path}`, {
+      ...init,
+      cache,
+      signal: init?.signal ?? AbortSignal.timeout(TEBEX_REQUEST_TIMEOUT_MS),
+      headers: requestHeaders,
+    });
+  } catch (error) {
+    const timedOut = error instanceof Error && error.name === "TimeoutError";
+    console.error("[tebex] Request failed", {
+      endpoint: sanitizeTebexPath(path),
+      method,
+      reason: error instanceof Error ? error.message : "Unknown request error",
+    });
+    throw new TebexError(
+      timedOut ? 504 : 503,
+      timedOut
+        ? "Tebex took too long to respond. Please try again."
+        : "Tebex is temporarily unavailable. Please try again.",
+    );
+  }
   const body = await readResponseBody(response);
 
   if (!response.ok) {
     const details = getTebexErrorDetails(body);
+    if (response.status !== 404) {
+      console.warn("[tebex] API request rejected", {
+        endpoint: sanitizeTebexPath(path),
+        method,
+        status: response.status,
+        hasDetails: Boolean(details),
+      });
+    }
     throw new TebexError(response.status, `Tebex ${response.status}: ${details || "Request failed"}`);
   }
 
@@ -109,6 +142,108 @@ function isMissingBasket(error: unknown): error is TebexError {
   return error instanceof TebexError && error.status === 404;
 }
 
+function extractBasketPayload(body: unknown): Record<string, unknown> | null {
+  if (!isRecord(body)) return null;
+
+  if ("data" in body) {
+    if (!isRecord(body.data)) return null;
+
+    const topLevelLinks = isRecord(body.links) ? body.links : null;
+    const nestedLinks = isRecord(body.data.links) ? body.data.links : null;
+
+    return {
+      ...body.data,
+      ...(topLevelLinks || nestedLinks
+        ? {
+            links: {
+              ...(topLevelLinks ?? {}),
+              ...(nestedLinks ?? {}),
+            },
+          }
+        : {}),
+    };
+  }
+
+  return body;
+}
+
+function normalizeBasketCoupon(value: unknown): unknown {
+  if (!isRecord(value) || value.coupon_code !== undefined) return value;
+  if (typeof value.code !== "string") return value;
+
+  return {
+    ...value,
+    coupon_code: value.code,
+  };
+}
+
+function normalizeBasketGiftCard(value: unknown): unknown {
+  if (!isRecord(value)) return value;
+  if (typeof value.card_number !== "number" || !Number.isFinite(value.card_number)) {
+    return value;
+  }
+
+  return {
+    ...value,
+    card_number: String(value.card_number),
+  };
+}
+
+function normalizeBasketPackage(value: unknown): unknown {
+  if (!isRecord(value)) return value;
+
+  const normalized = {
+    ...value,
+    ...(value.image === undefined ? { image: null } : {}),
+  };
+
+  if (!isRecord(value.in_basket)) return normalized;
+
+  return {
+    ...normalized,
+    in_basket: {
+      ...value.in_basket,
+      ...(value.in_basket.gift_username_id === undefined
+        ? { gift_username_id: null }
+        : {}),
+      ...(value.in_basket.gift_username === undefined
+        ? { gift_username: null }
+        : {}),
+    },
+  };
+}
+
+function normalizeBasketPayload(payload: Record<string, unknown>) {
+  const normalized = {
+    ...payload,
+    ...(typeof payload.id === "number" && Number.isFinite(payload.id)
+      ? { id: String(payload.id) }
+      : {}),
+    ...(payload.complete_url === undefined ? { complete_url: null } : {}),
+    ...(payload.username_id === undefined ? { username_id: null } : {}),
+    ...(payload.username === undefined ? { username: null } : {}),
+    ...(payload.email === undefined ? { email: null } : {}),
+    ...(payload.packages === undefined ? { packages: [] } : {}),
+    ...(payload.coupons === undefined ? { coupons: [] } : {}),
+    ...(payload.giftcards === undefined ? { giftcards: [] } : {}),
+    ...(payload.creator_code === undefined ? { creator_code: null } : {}),
+    ...(payload.links === undefined ? { links: {} } : {}),
+  };
+
+  return {
+    ...normalized,
+    ...(Array.isArray(normalized.packages)
+      ? { packages: normalized.packages.map(normalizeBasketPackage) }
+      : {}),
+    ...(Array.isArray(normalized.coupons)
+      ? { coupons: normalized.coupons.map(normalizeBasketCoupon) }
+      : {}),
+    ...(Array.isArray(normalized.giftcards)
+      ? { giftcards: normalized.giftcards.map(normalizeBasketGiftCard) }
+      : {}),
+  };
+}
+
 function accountPath(path: string): string {
   return `/accounts/${encodeURIComponent(getTebexToken())}${path}`;
 }
@@ -128,18 +263,29 @@ function getCurrentBasketIdent(): string | null {
 
 function requireBasketIdent(basket: Basket): Basket {
   if (!isRecord(basket) || typeof basket.ident !== "string" || !basket.ident) {
+    console.error("[tebex] Basket response did not include an identifier");
     throw new TebexError(502, "Tebex returned a basket without an identifier.");
   }
 
   return basket;
 }
 
-function parseBasketResponse(body: unknown): Basket {
-  if (!isRecord(body)) {
+export function parseBasketResponse(body: unknown, endpoint = "basket"): Basket {
+  const payload = extractBasketPayload(body);
+  const result = basketSchema.safeParse(
+    payload ? normalizeBasketPayload(payload) : payload,
+  );
+  if (!result.success) {
+    console.error("[tebex] Invalid basket response", {
+      endpoint,
+      fields: result.error.issues.map((issue) => ({
+        code: issue.code,
+        path: issue.path.join("."),
+      })),
+      keys: payload ? Object.keys(payload) : [],
+    });
     throw new TebexError(502, "Tebex returned an invalid basket.");
   }
-  const result = basketSchema.safeParse(body.data);
-  if (!result.success) throw new TebexError(502, "Tebex returned an invalid basket.");
   return result.data;
 }
 
@@ -192,7 +338,7 @@ export async function getBasket(ident?: string | null): Promise<Basket> {
       undefined,
       "no-store"
     );
-    const basket = parseBasketResponse(result);
+    const basket = parseBasketResponse(result, "get-basket");
 
     return basket.complete ? createEmptyBasket() : basket;
   } catch (error) {
@@ -204,6 +350,7 @@ export async function getBasket(ident?: string | null): Promise<Basket> {
 export async function createBasket(username?: string): Promise<Basket> {
   const origin = getSiteOrigin();
   const normalizedUsername = normalizeString(username);
+  const ipAddress = getClientIpAddress();
 
   const result = await tebexFetch(
     accountPath("/baskets"),
@@ -214,12 +361,13 @@ export async function createBasket(username?: string): Promise<Basket> {
         cancel_url: origin,
         complete_auto_redirect: true,
         ...(normalizedUsername ? { username: normalizedUsername } : {}),
+        ...(ipAddress ? { ip_address: ipAddress } : {}),
       }),
     },
     "no-store"
   );
 
-  return requireBasketIdent(parseBasketResponse(result));
+  return requireBasketIdent(parseBasketResponse(result, "create-basket"));
 }
 
 function getSiteOrigin(): string {
@@ -239,6 +387,34 @@ function getSiteOrigin(): string {
     return new URL(getRequest().url).origin;
   } catch {
     return "http://localhost:3000";
+  }
+}
+
+function isIpv4Address(value: string): boolean {
+  const octets = value.split(".");
+  return (
+    octets.length === 4 &&
+    octets.every((octet) => {
+      if (!/^\d+$/.test(octet)) return false;
+      const number = Number(octet);
+      return number >= 0 && number <= 255;
+    })
+  );
+}
+
+function getClientIpAddress(): string | undefined {
+  try {
+    const request = getRequest();
+    const forwardedFor = request.headers.get("x-forwarded-for");
+    const realIp = request.headers.get("x-real-ip");
+    const candidates = [
+      ...(forwardedFor?.split(",") ?? []),
+      realIp ?? "",
+    ].map((value) => value.trim());
+
+    return candidates.find(isIpv4Address);
+  } catch {
+    return undefined;
   }
 }
 

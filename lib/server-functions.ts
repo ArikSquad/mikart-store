@@ -52,11 +52,19 @@ export const getServerStatusServer = createServerFn({ method: "GET" }).handler((
 );
 
 export const getCartServer = createServerFn({ method: "GET" }).handler(async () => {
-  const cart = await getBasket(getCookie(BASKET_COOKIE));
-  const username = normalizeString(getCookie(USERNAME_COOKIE));
-  return cart.username && username && !sameMinecraftUsername(cart.username, username)
-    ? createEmptyBasket()
-    : cart;
+  try {
+    const cart = await getBasket(getCookie(BASKET_COOKIE));
+    const username = normalizeString(getCookie(USERNAME_COOKIE));
+    return cart.username && username && !sameMinecraftUsername(cart.username, username)
+      ? createEmptyBasket()
+      : cart;
+  } catch (error) {
+    console.error("[cart] getCartServer failed", {
+      message: error instanceof Error ? error.message : "Unknown cart error",
+      name: error instanceof Error ? error.name : "UnknownError",
+    });
+    throw error;
+  }
 });
 
 export const addCartItemServer = createServerFn({ method: "POST" })

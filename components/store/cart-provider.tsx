@@ -21,12 +21,15 @@ import {
   removeCartItemServer,
   updateCartItemServer,
 } from "@/lib/server-functions";
+import { getErrorMessage } from "@/lib/errors";
 import { isMinecraftUsername, normalizeString, sameMinecraftUsername } from "@/lib/validation";
 
 type CartContextValue = {
   cart: Basket;
   username: string | null;
   setUsername: (username: string | null) => void;
+  loadError: string | null;
+  retryLoad: () => Promise<void>;
   pending: boolean;
   drawerOpen: boolean;
   setDrawerOpen: (open: boolean) => void;
@@ -72,32 +75,62 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const username = useSyncExternalStore(subscribeToUsername, readStoredUsername, getServerUsername);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const cartRequestVersion = useRef(0);
   const cartMutationVersion = useRef(0);
+  const cartMounted = useRef(false);
+
+  const runWithPending = useCallback(async <T,>(work: () => Promise<T>): Promise<T> => {
+    setPendingCount((count) => count + 1);
+    try {
+      return await work();
+    } finally {
+      setPendingCount((count) => Math.max(0, count - 1));
+    }
+  }, []);
+
+  const loadCart = useCallback(async (): Promise<void> => {
+    const requestVersion = ++cartRequestVersion.current;
+    const mutationVersion = cartMutationVersion.current;
+
+    try {
+      const nextCart = await getCartServer();
+      if (
+        cartMounted.current &&
+        requestVersion === cartRequestVersion.current &&
+        mutationVersion === cartMutationVersion.current
+      ) {
+        setCart(nextCart);
+        setLoadError(null);
+      }
+    } catch (error) {
+      if (
+        cartMounted.current &&
+        requestVersion === cartRequestVersion.current &&
+        mutationVersion === cartMutationVersion.current
+      ) {
+        console.error("[cart] Failed to load the saved basket", error);
+        setLoadError(getErrorMessage(error, "Unable to load your basket. Please try again."));
+      }
+    }
+  }, []);
+
+  const retryLoad = useCallback(async (): Promise<void> => {
+    await runWithPending(loadCart);
+  }, [loadCart, runWithPending]);
 
   useEffect(() => {
     let active = true;
-    const requestVersion = cartRequestVersion.current;
-    const mutationVersion = cartMutationVersion.current;
-
-    void getCartServer()
-      .then((nextCart) => {
-        if (
-          active &&
-          requestVersion === cartRequestVersion.current &&
-          mutationVersion === cartMutationVersion.current
-        ) {
-          setCart(nextCart);
-        }
-      })
-      .catch(() => {
-        // An empty basket is already rendered while the request is pending.
-      });
+    cartMounted.current = true;
+    queueMicrotask(() => {
+      if (active) void loadCart();
+    });
 
     return () => {
       active = false;
+      cartMounted.current = false;
     };
-  }, []);
+  }, [loadCart]);
 
   const setUsername = useCallback((nextUsername: string | null) => {
     const normalizedUsername = normalizeString(nextUsername);
@@ -110,6 +143,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     if (accountChanged) {
       cartRequestVersion.current += 1;
       setCart(createEmptyBasket());
+      setLoadError(null);
     }
 
     try {
@@ -129,25 +163,18 @@ export function CartProvider({ children }: { children: ReactNode }) {
     window.dispatchEvent(new Event(USERNAME_CHANGE_EVENT));
   }, [username]);
 
-  const runWithPending = useCallback(async <T,>(work: () => Promise<T>): Promise<T> => {
-    setPendingCount((count) => count + 1);
-    try {
-      return await work();
-    } finally {
-      setPendingCount((count) => Math.max(0, count - 1));
-    }
-  }, []);
-
   const updateCart = useCallback(
     async (work: () => Promise<Basket>): Promise<void> => {
       const requestVersion = cartRequestVersion.current;
       const mutationVersion = ++cartMutationVersion.current;
       const nextCart = await runWithPending(work);
       if (
+        cartMounted.current &&
         requestVersion === cartRequestVersion.current &&
         mutationVersion === cartMutationVersion.current
       ) {
         setCart(nextCart);
+        setLoadError(null);
       }
     },
     [runWithPending]
@@ -202,6 +229,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
       cart,
       username,
       setUsername,
+      loadError,
+      retryLoad,
       pending: pendingCount > 0,
       drawerOpen,
       setDrawerOpen,
@@ -217,8 +246,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
       cart,
       checkout,
       drawerOpen,
+      loadError,
       pendingCount,
       removeItem,
+      retryLoad,
       setUsername,
       updateQuantity,
       username,

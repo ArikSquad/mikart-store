@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Image } from "@/components/ui/image";
 import { useCart } from "@/components/store/cart-provider";
 import { getMaxQuantity, type DiscountKind } from "@/lib/cart";
+import { getErrorMessage } from "@/lib/errors";
 import type { Basket } from "@/lib/types";
 import { formatMoney } from "@/lib/utils";
 
@@ -47,7 +48,19 @@ export function CartButton() {
 }
 
 export function CartDrawer() {
-  const { cart, drawerOpen, setDrawerOpen, removeItem, updateQuantity, applyDiscount, checkout, pending, username } = useCart();
+  const {
+    cart,
+    drawerOpen,
+    setDrawerOpen,
+    removeItem,
+    updateQuantity,
+    applyDiscount,
+    checkout,
+    pending,
+    username,
+    loadError,
+    retryLoad,
+  } = useCart();
   const [code, setCode] = useState("");
   const [kind, setKind] = useState<DiscountKind>("coupon");
   const [message, setMessage] = useState<string | null>(null);
@@ -68,7 +81,7 @@ export function CartDrawer() {
     try {
       await action();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Cart request failed.");
+      setMessage(getErrorMessage(error, "Cart request failed. Please try again."));
     }
   }
 
@@ -132,7 +145,20 @@ export function CartDrawer() {
             </div>
 
             <div className="space-y-3">
-              {cart.packages.length === 0 ? (
+              {loadError ? (
+                <div role="alert" className="rounded-[16px] bg-[#342334] p-6 text-sm text-orange-pop">
+                  <p>{loadError}</p>
+                  <Button
+                    type="button"
+                    variant="orange"
+                    className="mt-4"
+                    disabled={pending}
+                    onClick={() => void retryLoad()}
+                  >
+                    {pending ? "Trying again…" : "Try again"}
+                  </Button>
+                </div>
+              ) : cart.packages.length === 0 ? (
                 <div className="rounded-[16px] bg-ink-850 p-6 text-sm text-[#b9bdca]">Your basket is empty.</div>
               ) : (
                 cart.packages.map((line) => {
@@ -227,7 +253,7 @@ export function CartDrawer() {
                   required
                   className="min-w-0 flex-1 rounded-[12px] border border-[#373d53] bg-ink-900 px-3 text-sm font-bold outline-none ring-cyan-pop/0 transition focus:ring-2"
                 />
-                <Button type="submit" size="sm" disabled={pending || !code.trim()}>
+                <Button type="submit" size="sm" disabled={pending || Boolean(loadError) || !code.trim()}>
                   Apply
                 </Button>
               </div>
@@ -249,12 +275,16 @@ export function CartDrawer() {
               <AppliedCodes cart={cart} />
             </div>
 
-            {message ? <p className="mt-4 rounded-xl bg-[#342334] p-3 text-sm text-orange-pop">{message}</p> : null}
+            {message ? (
+              <p role="alert" className="mt-4 rounded-xl bg-[#342334] p-3 text-sm text-orange-pop">
+                {message}
+              </p>
+            ) : null}
 
             <Button
               type="button"
               className="mt-5 w-full"
-              disabled={pending || !username || cart.packages.length === 0}
+              disabled={pending || Boolean(loadError) || !username || cart.packages.length === 0}
               onClick={() => void startCheckout()}
             >
               <ShoppingBasket size={16} />

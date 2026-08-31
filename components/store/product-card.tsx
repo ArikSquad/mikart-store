@@ -8,6 +8,7 @@ import { Image } from "@/components/ui/image";
 import { useCart } from "@/components/store/cart-provider";
 import { RichHtml } from "@/components/store/rich-html";
 import { getMaxQuantity, getUserLimit } from "@/lib/cart";
+import { getErrorMessage } from "@/lib/errors";
 import type { Package } from "@/lib/types";
 import { getPackageDetails } from "@/lib/package-details";
 import { cn, formatMoney } from "@/lib/utils";
@@ -52,7 +53,7 @@ function ProductCard({ product, index }: { product: Package; index: number }) {
     try {
       await action();
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "Cart request failed.");
+      setError(getErrorMessage(actionError, "Cart request failed. Please try again."));
     }
   }
 
@@ -168,7 +169,7 @@ function ProductCard({ product, index }: { product: Package; index: number }) {
         </>
       )}
 
-      {error ? <p className="mt-3 text-xs font-bold text-[#ff7777]">{error}</p> : null}
+      {error ? <p role="alert" className="mt-3 text-xs font-bold text-[#ff7777]">{error}</p> : null}
 
       <motion.div layout className="mt-4 space-y-2 text-[15px] text-[#c7cad6]">
         {details.features.map((feature, featureIndex) => (
